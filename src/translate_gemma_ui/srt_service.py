@@ -5,7 +5,7 @@ from typing import Literal
 
 from translate_gemma_ui.glossary import apply_glossary_post, apply_glossary_pre
 from translate_gemma_ui.srt_parser import SrtEntry, parse_srt, serialize_srt
-from translate_gemma_ui.translator import Translator
+from translate_gemma_ui.translator import OutOfMemoryError, Translator
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,8 @@ def _translate_srt_single(
                 end_time=entry.end_time,
                 text=translated,
             )
+        except OutOfMemoryError:
+            raise
         except Exception:
             logger.exception("字幕 %d/%d 翻譯失敗", i + 1, total)
 
@@ -132,6 +134,8 @@ def _translate_srt_batch(
                         end_time=entry.end_time,
                         text=translated,
                     )
+        except OutOfMemoryError:
+            raise
         except Exception:
             logger.exception("批次 %d/%d 翻譯失敗", batch_idx + 1, total_batches)
 

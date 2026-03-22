@@ -7,6 +7,24 @@ logger = logging.getLogger(__name__)
 
 _QUANTIZATION_VRAM_THRESHOLD = 8 * 1024**3  # 8 GB
 
+
+class OutOfMemoryError(RuntimeError):
+    """Raised when GPU runs out of memory during model inference."""
+
+    pass
+
+
+def _is_oom_error(exc: BaseException) -> bool:
+    """Check if an exception is a CUDA/MPS out-of-memory error."""
+    try:
+        import torch
+
+        if isinstance(exc, torch.cuda.OutOfMemoryError):
+            return True
+    except ImportError:
+        pass
+    return isinstance(exc, RuntimeError) and "out of memory" in str(exc).lower()
+
 SUPPORTED_LANGUAGES: dict[str, str] = {
     "en": "English",
     "zh-TW": "Chinese (Traditional)",
@@ -151,12 +169,18 @@ class TranslateGemmaTranslator:
         thread = Thread(target=self._model.generate, kwargs=generation_kwargs)
         thread.start()
 
-        accumulated = ""
-        for chunk in streamer:
-            accumulated += chunk
-            yield accumulated
+        try:
+            accumulated = ""
+            for chunk in streamer:
+                accumulated += chunk
+                yield accumulated
 
-        thread.join()
+            thread.join()
+        except Exception as e:
+            thread.join()
+            if _is_oom_error(e):
+                raise OutOfMemoryError("記憶體不足，建議關閉其他應用程式或改用 CPU 模式") from e
+            raise
 
 
 class FakeTranslator:

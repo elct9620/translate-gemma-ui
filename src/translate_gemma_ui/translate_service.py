@@ -5,7 +5,7 @@ from typing import Literal
 
 from translate_gemma_ui.glossary import apply_glossary_post, apply_glossary_pre
 from translate_gemma_ui.text_splitter import create_windows, merge_translations, split_sentences
-from translate_gemma_ui.translator import Translator
+from translate_gemma_ui.translator import OutOfMemoryError, Translator
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,8 @@ def translate_text(
                 if glossary_mode == "post":
                     partial_result = apply_glossary_post(partial_result, glossary)
                 yield TranslationChunk(text=partial_result, progress=progress)
+        except OutOfMemoryError:
+            raise
         except Exception:
             logger.exception("Segment %d/%d translation failed", i + 1, len(windows))
             last_chunk = window.text

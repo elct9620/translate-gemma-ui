@@ -10,7 +10,7 @@ from translate_gemma_ui.glossary import parse_glossary
 from translate_gemma_ui.srt_parser import SrtEntry, parse_srt, serialize_srt
 from translate_gemma_ui.srt_service import translate_srt, translate_srt_full_file
 from translate_gemma_ui.translate_service import translate_text
-from translate_gemma_ui.translator import Translator
+from translate_gemma_ui.translator import OutOfMemoryError, Translator
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +64,13 @@ def _make_translate_fn(
             raise gr.Error("來源語言與目標語言不得相同")
 
         glossary = _parse_glossary_file(glossary_path)
-        for chunk in translate_text(
-            translator, text, source_lang, target_lang, glossary=glossary, glossary_mode=glossary_mode
-        ):
-            yield chunk.text, chunk.progress
+        try:
+            for chunk in translate_text(
+                translator, text, source_lang, target_lang, glossary=glossary, glossary_mode=glossary_mode
+            ):
+                yield chunk.text, chunk.progress
+        except OutOfMemoryError:
+            raise gr.Error("記憶體不足，建議關閉其他應用程式或改用 CPU 模式")
 
     return translate
 
@@ -100,28 +103,31 @@ def _make_srt_translate_fn(
 
         glossary = _parse_glossary_file(glossary_path)
 
-        if mode == "full":
-            try:
-                chunks = translate_srt_full_file(
-                    translator, entries, source_lang, target_lang, glossary=glossary, glossary_mode=glossary_mode
-                )
-            except ValueError as e:
-                raise gr.Error(str(e))
-            for chunk in chunks:
-                output_path = _write_srt_temp(chunk.entries, file_path)
-                yield chunk.progress, serialize_srt(chunk.entries), output_path
-        else:
-            for chunk in translate_srt(
-                translator,
-                entries,
-                source_lang,
-                target_lang,
-                batch_size=int(batch_size),
-                glossary=glossary,
-                glossary_mode=glossary_mode,
-            ):
-                output_path = _write_srt_temp(chunk.entries, file_path)
-                yield chunk.progress, serialize_srt(chunk.entries), output_path
+        try:
+            if mode == "full":
+                try:
+                    chunks = translate_srt_full_file(
+                        translator, entries, source_lang, target_lang, glossary=glossary, glossary_mode=glossary_mode
+                    )
+                except ValueError as e:
+                    raise gr.Error(str(e))
+                for chunk in chunks:
+                    output_path = _write_srt_temp(chunk.entries, file_path)
+                    yield chunk.progress, serialize_srt(chunk.entries), output_path
+            else:
+                for chunk in translate_srt(
+                    translator,
+                    entries,
+                    source_lang,
+                    target_lang,
+                    batch_size=int(batch_size),
+                    glossary=glossary,
+                    glossary_mode=glossary_mode,
+                ):
+                    output_path = _write_srt_temp(chunk.entries, file_path)
+                    yield chunk.progress, serialize_srt(chunk.entries), output_path
+        except OutOfMemoryError:
+            raise gr.Error("記憶體不足，建議關閉其他應用程式或改用 CPU 模式")
 
     return translate
 

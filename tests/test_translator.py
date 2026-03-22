@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from translate_gemma_ui.translator import (
     SUPPORTED_LANGUAGES,
     FakeTranslator,
+    OutOfMemoryError,
     Translator,
 )
 
@@ -190,3 +191,12 @@ class TestTranslateGemmaQuantization:
     def test_fake_translator_is_not_quantized(self):
         translator = FakeTranslator()
         assert translator.is_quantized is False
+
+
+class TestOutOfMemoryError:
+    def test_is_runtime_error_subclass(self):
+        assert issubclass(OutOfMemoryError, RuntimeError)
+
+    def test_carries_friendly_message(self):
+        err = OutOfMemoryError("記憶體不足")
+        assert "記憶體不足" in str(err)

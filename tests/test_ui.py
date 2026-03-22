@@ -4,7 +4,7 @@ import gradio as gr
 import pytest
 
 from translate_gemma_ui.device import DeviceInfo
-from translate_gemma_ui.translator import FakeTranslator
+from translate_gemma_ui.translator import FakeTranslator, OutOfMemoryError
 from translate_gemma_ui.ui import (
     _build_device_display,
     _build_model_status,
@@ -179,6 +179,30 @@ class TestTranslateFn:
         translator_ref[0] = fake2
         results = list(fn("hello", "en", "ja"))
         assert len(results) > 0
+
+
+class TestTranslateFnOOM:
+    def test_oom_raises_gr_error_with_memory_message(self):
+        class OOMTranslator(FakeTranslator):
+            def translate(self, text, source_lang, target_lang):
+                raise OutOfMemoryError("CUDA out of memory")
+
+        fn = _make_translate_fn([OOMTranslator()])
+        with pytest.raises(gr.Error, match="記憶體不足"):
+            list(fn("hello", "en", "ja"))
+
+
+class TestSrtTranslateFnOOM:
+    def test_oom_raises_gr_error_with_memory_message(self, tmp_path):
+        class OOMTranslator(FakeTranslator):
+            def translate(self, text, source_lang, target_lang):
+                raise OutOfMemoryError("CUDA out of memory")
+
+        srt_file = tmp_path / "test.srt"
+        srt_file.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
+        fn = _make_srt_translate_fn([OOMTranslator()])
+        with pytest.raises(gr.Error, match="記憶體不足"):
+            list(fn(str(srt_file), "en", "ja", "batch", 1))
 
 
 class TestParseGlossaryFile:
