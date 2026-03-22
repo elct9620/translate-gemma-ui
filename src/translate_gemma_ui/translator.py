@@ -1,11 +1,16 @@
 import logging
-import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from threading import Thread
 from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_LANGUAGES: dict[str, str] = {
+    "en": "English",
+    "zh-TW": "Chinese (Traditional)",
+    "ja": "Japanese",
+}
 
 
 @dataclass(frozen=True)
@@ -43,16 +48,6 @@ class Translator(Protocol):
         ...
 
 
-def _extract_languages_from_template(chat_template: str) -> dict[str, str]:
-    pattern = re.compile(r'"([a-zA-Z\-]+)":\s*"([^"]+)"')
-    languages: dict[str, str] = {}
-    for match in pattern.finditer(chat_template):
-        code, name = match.group(1), match.group(2)
-        if code not in languages:
-            languages[code] = name
-    return languages
-
-
 class TranslateGemmaTranslator:
     def __init__(self, model_id: str = "google/translategemma-4b-it", token: str | None = None):
         import torch
@@ -62,7 +57,7 @@ class TranslateGemmaTranslator:
 
         self._model_name = model_id
         self._processor = AutoProcessor.from_pretrained(model_id, token=token)
-        self._languages = _extract_languages_from_template(self._processor.chat_template)
+        self._languages = SUPPORTED_LANGUAGES
 
         dtype = torch.bfloat16 if torch.cuda.is_available() or torch.backends.mps.is_available() else torch.float32
         self._model = AutoModelForImageTextToText.from_pretrained(
@@ -123,32 +118,11 @@ class TranslateGemmaTranslator:
         return prompt
 
     def _tokenize_inputs(self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None):
-        if context is not None:
-            prompt = self._build_context_prompt(text, source_lang, target_lang, context)
-            return self._processor.tokenizer(prompt, return_tensors="pt", add_special_tokens=True).to(
-                self._model.device
-            )
-
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "source_lang_code": source_lang,
-                        "target_lang_code": target_lang,
-                        "text": text,
-                    }
-                ],
-            }
-        ]
-        return self._processor.apply_chat_template(
-            messages,
-            tokenize=True,
-            add_generation_prompt=True,
-            return_dict=True,
-            return_tensors="pt",
-        ).to(self._model.device)
+        effective_context = context if context is not None else TranslationContext(previous=[], following=[])
+        prompt = self._build_context_prompt(text, source_lang, target_lang, effective_context)
+        return self._processor.tokenizer(prompt, return_tensors="pt", add_special_tokens=True).to(
+            self._model.device
+        )
 
     def translate(
         self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None = None
@@ -183,16 +157,7 @@ class TranslateGemmaTranslator:
 
 class FakeTranslator:
     def __init__(self):
-        self._languages = {
-            "en": "English",
-            "zh-TW": "Chinese (Traditional)",
-            "zh-CN": "Chinese (Simplified)",
-            "ja": "Japanese",
-            "ko": "Korean",
-            "es": "Spanish",
-            "fr": "French",
-            "de": "German",
-        }
+        self._languages = SUPPORTED_LANGUAGES
 
     @property
     def languages(self) -> dict[str, str]:

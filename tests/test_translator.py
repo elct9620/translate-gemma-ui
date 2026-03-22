@@ -1,36 +1,35 @@
 from unittest.mock import MagicMock, patch
 
 from translate_gemma_ui.translator import (
+    SUPPORTED_LANGUAGES,
     FakeTranslator,
     TranslationContext,
     Translator,
-    _extract_languages_from_template,
 )
 
 
-class TestExtractLanguages:
-    def test_extracts_language_pairs(self):
-        template = '"en": "English", "ja": "Japanese", "zh-TW": "Chinese"'
-        result = _extract_languages_from_template(template)
-        assert result == {"en": "English", "ja": "Japanese", "zh-TW": "Chinese"}
+class TestSupportedLanguages:
+    def test_contains_exactly_three_languages(self):
+        assert len(SUPPORTED_LANGUAGES) == 3
 
-    def test_empty_template(self):
-        assert _extract_languages_from_template("") == {}
+    def test_contains_english(self):
+        assert SUPPORTED_LANGUAGES["en"] == "English"
 
-    def test_no_matching_format(self):
-        assert _extract_languages_from_template("random text without language pairs") == {}
+    def test_contains_traditional_chinese(self):
+        assert SUPPORTED_LANGUAGES["zh-TW"] == "Chinese (Traditional)"
 
-    def test_first_occurrence_wins(self):
-        template = '"en": "English", "en": "British English"'
-        result = _extract_languages_from_template(template)
-        assert result["en"] == "English"
+    def test_contains_japanese(self):
+        assert SUPPORTED_LANGUAGES["ja"] == "Japanese"
+
+    def test_no_duplicate_display_names(self):
+        names = list(SUPPORTED_LANGUAGES.values())
+        assert len(names) == len(set(names))
 
 
 class TestFakeTranslator:
-    def test_fake_translator_has_languages(self):
+    def test_fake_translator_uses_supported_languages(self):
         translator = FakeTranslator()
-        assert len(translator.languages) > 0
-        assert "en" in translator.languages
+        assert translator.languages is SUPPORTED_LANGUAGES
 
     def test_fake_translator_is_ready(self):
         translator = FakeTranslator()
@@ -90,7 +89,6 @@ class TestBuildContextPrompt:
     @patch("transformers.AutoProcessor")
     def test_prompt_contains_control_tokens(self, mock_processor_cls, mock_model_cls):
         mock_processor = MagicMock()
-        mock_processor.chat_template = '"en": "English", "zh-TW": "Chinese"'
         mock_processor_cls.from_pretrained.return_value = mock_processor
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -106,9 +104,24 @@ class TestBuildContextPrompt:
 
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
+    def test_prompt_uses_traditional_chinese_for_zh_tw(self, mock_processor_cls, mock_model_cls):
+        mock_processor = MagicMock()
+        mock_processor_cls.from_pretrained.return_value = mock_processor
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+        ctx = TranslationContext(previous=[], following=[])
+        prompt = translator._build_context_prompt("Hello", "en", "zh-TW", ctx)
+
+        assert "Chinese (Traditional)" in prompt
+        assert "Chinese (Traditional) (zh-TW)" in prompt
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
     def test_prompt_contains_context_section(self, mock_processor_cls, mock_model_cls):
         mock_processor = MagicMock()
-        mock_processor.chat_template = '"en": "English", "zh-TW": "Chinese"'
         mock_processor_cls.from_pretrained.return_value = mock_processor
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -126,7 +139,6 @@ class TestBuildContextPrompt:
     @patch("transformers.AutoProcessor")
     def test_prompt_places_target_text_after_translate_instruction(self, mock_processor_cls, mock_model_cls):
         mock_processor = MagicMock()
-        mock_processor.chat_template = '"en": "English", "zh-TW": "Chinese"'
         mock_processor_cls.from_pretrained.return_value = mock_processor
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -146,7 +158,6 @@ class TestBuildContextPrompt:
     @patch("transformers.AutoProcessor")
     def test_prompt_omits_context_section_when_both_empty(self, mock_processor_cls, mock_model_cls):
         mock_processor = MagicMock()
-        mock_processor.chat_template = '"en": "English", "zh-TW": "Chinese"'
         mock_processor_cls.from_pretrained.return_value = mock_processor
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -162,7 +173,6 @@ class TestBuildContextPrompt:
     @patch("transformers.AutoProcessor")
     def test_prompt_has_no_extra_blank_lines_between_sections(self, mock_processor_cls, mock_model_cls):
         mock_processor = MagicMock()
-        mock_processor.chat_template = '"en": "English", "zh-TW": "Chinese"'
         mock_processor_cls.from_pretrained.return_value = mock_processor
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -195,9 +205,8 @@ class TestTranslateGemmaTranslatorInit:
 
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_init_sets_languages_from_processor(self, mock_processor_cls, mock_model_cls):
+    def test_init_uses_supported_languages(self, mock_processor_cls, mock_model_cls):
         mock_processor = MagicMock()
-        mock_processor.chat_template = '"en": "English", "ja": "Japanese"'
         mock_processor_cls.from_pretrained.return_value = mock_processor
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -205,13 +214,12 @@ class TestTranslateGemmaTranslatorInit:
 
         translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
 
-        assert translator.languages == {"en": "English", "ja": "Japanese"}
+        assert translator.languages is SUPPORTED_LANGUAGES
 
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
     def test_init_sets_max_tokens_from_config(self, mock_processor_cls, mock_model_cls):
         mock_processor = MagicMock()
-        mock_processor.chat_template = '"en": "English"'
         mock_processor_cls.from_pretrained.return_value = mock_processor
 
         mock_model = MagicMock()
@@ -228,7 +236,6 @@ class TestTranslateGemmaTranslatorInit:
     @patch("transformers.AutoProcessor")
     def test_init_reports_ready(self, mock_processor_cls, mock_model_cls):
         mock_processor = MagicMock()
-        mock_processor.chat_template = '"en": "English"'
         mock_processor_cls.from_pretrained.return_value = mock_processor
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
