@@ -1,9 +1,9 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import gradio as gr
 
 from translate_gemma_ui.device import DeviceInfo
-from translate_gemma_ui.text_splitter import create_windows, merge_translations, split_sentences
+from translate_gemma_ui.translate_service import translate_text
 from translate_gemma_ui.translator import Translator
 
 
@@ -14,13 +14,9 @@ def _build_device_display(device_info: DeviceInfo) -> str:
     return "\n\n".join(parts)
 
 
-def _estimate_tokens(text: str) -> int:
-    return len(text) // 3
-
-
 def _make_translate_fn(
     translator: Translator,
-) -> callable:
+) -> Callable[..., Iterator[tuple[str, str]]]:
     def translate(text: str, source_lang: str, target_lang: str) -> Iterator[tuple[str, str]]:
         if not translator.is_ready:
             raise gr.Error("模型載入中，請稍候")
@@ -29,34 +25,8 @@ def _make_translate_fn(
         if source_lang == target_lang:
             raise gr.Error("來源語言與目標語言不得相同")
 
-        sentences = split_sentences(text)
-        windows = create_windows(sentences, translator.max_tokens, _estimate_tokens)
-
-        if len(windows) <= 1:
-            for chunk in translator.translate(text, source_lang, target_lang):
-                yield chunk, ""
-            return
-
-        translations: list[str] = []
-        for i, window in enumerate(windows):
-            progress = f"翻譯中... ({i + 1}/{len(windows)})"
-            last_chunk = ""
-            try:
-                for chunk in translator.translate(window.text, source_lang, target_lang):
-                    last_chunk = chunk
-                    partial = translations + [last_chunk]
-                    partial_result = merge_translations(windows[: len(partial)], partial, sentences)
-                    yield partial_result, progress
-            except Exception:
-                last_chunk = window.text
-                yield (
-                    merge_translations(windows[: len(translations) + 1], translations + [last_chunk], sentences),
-                    (f"段落 {i + 1} 翻譯失敗，保留原文"),
-                )
-            translations.append(last_chunk)
-
-        final = merge_translations(windows, translations, sentences)
-        yield final, f"翻譯完成 ({len(windows)} 段)"
+        for chunk in translate_text(translator, text, source_lang, target_lang):
+            yield chunk.text, chunk.progress
 
     return translate
 

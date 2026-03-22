@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from translate_gemma_ui.device import DeviceInfo, get_device_info
 
 
@@ -48,8 +50,28 @@ def test_cpu_fallback():
 
 def test_device_info_is_frozen():
     info = DeviceInfo(device_name="CPU", memory_info="8.00 GB RAM", is_cpu=True)
-    try:
+    with pytest.raises(AttributeError):
         info.device_name = "GPU"
-        assert False, "Should have raised FrozenInstanceError"
-    except AttributeError:
-        pass
+
+
+def test_system_memory_windows_fallback():
+    from unittest.mock import MagicMock
+
+    from translate_gemma_ui.device import _get_system_memory_bytes
+
+    mock_windll = MagicMock()
+    # Simulate GetPhysicallyInstalledSystemMemory setting value to 16GB in KB
+    mock_windll.kernel32.GetPhysicallyInstalledSystemMemory.side_effect = lambda ptr: setattr(
+        ptr._obj, "value", 16 * 1024 * 1024
+    )
+
+    import ctypes
+
+    mock_ctypes = MagicMock(windll=mock_windll, c_ulonglong=ctypes.c_ulonglong, byref=ctypes.byref)
+
+    with (
+        patch("os.sysconf", side_effect=AttributeError("not available on Windows")),
+        patch.dict("sys.modules", {"ctypes": mock_ctypes}),
+    ):
+        result = _get_system_memory_bytes()
+        assert result == 16 * 1024 * 1024 * 1024

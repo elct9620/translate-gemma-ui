@@ -1,4 +1,22 @@
-from translate_gemma_ui.translator import FakeTranslator, Translator
+from translate_gemma_ui.translator import FakeTranslator, Translator, _extract_languages_from_template
+
+
+class TestExtractLanguages:
+    def test_extracts_language_pairs(self):
+        template = '"en": "English", "ja": "Japanese", "zh-TW": "Chinese"'
+        result = _extract_languages_from_template(template)
+        assert result == {"en": "English", "ja": "Japanese", "zh-TW": "Chinese"}
+
+    def test_empty_template(self):
+        assert _extract_languages_from_template("") == {}
+
+    def test_no_matching_format(self):
+        assert _extract_languages_from_template("random text without language pairs") == {}
+
+    def test_first_occurrence_wins(self):
+        template = '"en": "English", "en": "British English"'
+        result = _extract_languages_from_template(template)
+        assert result["en"] == "English"
 
 
 class TestFakeTranslator:

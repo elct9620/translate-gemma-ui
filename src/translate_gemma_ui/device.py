@@ -16,7 +16,16 @@ def _format_memory(total_bytes: int, label: str) -> str:
 
 
 def _get_system_memory_bytes() -> int:
-    return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except (ValueError, AttributeError):
+        # Windows: os.sysconf is not available
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        mem_status = ctypes.c_ulonglong()
+        kernel32.GetPhysicallyInstalledSystemMemory(ctypes.byref(mem_status))
+        return mem_status.value * 1024
 
 
 def get_device_info() -> DeviceInfo:

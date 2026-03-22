@@ -65,7 +65,7 @@ def merge_translations(
     if not windows:
         return ""
 
-    total = original_sentences.__len__()
+    total = len(original_sentences)
     result_sentences: list[str] = [""] * total
 
     for window, translation in zip(windows, translations):

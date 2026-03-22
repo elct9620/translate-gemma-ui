@@ -1,8 +1,9 @@
 import gradio as gr
+import pytest
 
 from translate_gemma_ui.device import DeviceInfo
 from translate_gemma_ui.translator import FakeTranslator
-from translate_gemma_ui.ui import _make_translate_fn, create_app
+from translate_gemma_ui.ui import _build_device_display, _make_translate_fn, create_app
 
 
 def _cpu_device():
@@ -18,42 +19,34 @@ class TestCreateApp:
         app = create_app(FakeTranslator(), _cpu_device())
         assert isinstance(app, gr.Blocks)
 
-    def test_cpu_device_shows_warning(self):
-        app = create_app(FakeTranslator(), _cpu_device())
-        assert app is not None
 
-    def test_gpu_device_no_warning(self):
-        app = create_app(FakeTranslator(), _gpu_device())
-        assert app is not None
+class TestDeviceDisplay:
+    def test_cpu_shows_warning(self):
+        display = _build_device_display(_cpu_device())
+        assert "CPU" in display
+        assert "翻譯速度可能較慢" in display
+
+    def test_gpu_no_warning(self):
+        display = _build_device_display(_gpu_device())
+        assert "NVIDIA RTX 4090" in display
+        assert "翻譯速度可能較慢" not in display
 
 
 class TestTranslateFn:
     def test_empty_input_raises_error(self):
-        translator = FakeTranslator()
-        fn = _make_translate_fn(translator)
-        try:
+        fn = _make_translate_fn(FakeTranslator())
+        with pytest.raises(gr.Error, match="輸入"):
             list(fn("", "en", "ja"))
-            assert False, "Should have raised gr.Error"
-        except gr.Error as e:
-            assert "輸入" in str(e)
 
     def test_whitespace_input_raises_error(self):
-        translator = FakeTranslator()
-        fn = _make_translate_fn(translator)
-        try:
+        fn = _make_translate_fn(FakeTranslator())
+        with pytest.raises(gr.Error, match="輸入"):
             list(fn("   ", "en", "ja"))
-            assert False, "Should have raised gr.Error"
-        except gr.Error as e:
-            assert "輸入" in str(e)
 
     def test_same_language_raises_error(self):
-        translator = FakeTranslator()
-        fn = _make_translate_fn(translator)
-        try:
+        fn = _make_translate_fn(FakeTranslator())
+        with pytest.raises(gr.Error, match="相同"):
             list(fn("hello", "en", "en"))
-            assert False, "Should have raised gr.Error"
-        except gr.Error as e:
-            assert "相同" in str(e)
 
     def test_model_not_ready_raises_error(self):
         class NotReadyTranslator(FakeTranslator):
@@ -62,23 +55,18 @@ class TestTranslateFn:
                 return False
 
         fn = _make_translate_fn(NotReadyTranslator())
-        try:
+        with pytest.raises(gr.Error, match="載入"):
             list(fn("hello", "en", "ja"))
-            assert False, "Should have raised gr.Error"
-        except gr.Error as e:
-            assert "載入" in str(e)
 
     def test_valid_input_streams_result(self):
-        translator = FakeTranslator()
-        fn = _make_translate_fn(translator)
+        fn = _make_translate_fn(FakeTranslator())
         results = list(fn("hello", "en", "ja"))
         assert len(results) > 0
         text, _progress = results[-1]
         assert "hello" in text
 
     def test_short_text_returns_empty_progress(self):
-        translator = FakeTranslator()
-        fn = _make_translate_fn(translator)
+        fn = _make_translate_fn(FakeTranslator())
         results = list(fn("hello", "en", "ja"))
         _text, progress = results[-1]
         assert progress == ""
