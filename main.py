@@ -1,3 +1,9 @@
+import logging
+import os
+
+level = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, level, logging.INFO))
+
 from translate_gemma_ui import app
 
 if __name__ == "__main__":
