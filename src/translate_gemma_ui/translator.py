@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from threading import Thread
 from typing import Protocol, runtime_checkable
 
@@ -17,7 +17,7 @@ SUPPORTED_LANGUAGES: dict[str, str] = {
 class TranslationContext:
     previous: list[str]
     following: list[str]
-    glossary: list[tuple[str, str]] = field(default_factory=list)
+    glossary_prompt: str = ""
 
 
 @runtime_checkable
@@ -88,8 +88,6 @@ class TranslateGemmaTranslator:
         return self._model_name
 
     def _build_context_prompt(self, text: str, source_lang: str, target_lang: str, context: TranslationContext) -> str:
-        from translate_gemma_ui.glossary import format_glossary_prompt
-
         source_name = self._languages.get(source_lang, source_lang)
         target_name = self._languages.get(target_lang, target_lang)
 
@@ -109,9 +107,8 @@ class TranslateGemmaTranslator:
         if context_lines:
             prompt += "[Context]\n" + "\n".join(context_lines) + "\n"
 
-        glossary_section = format_glossary_prompt(context.glossary)
-        if glossary_section:
-            prompt += glossary_section
+        if context.glossary_prompt:
+            prompt += context.glossary_prompt
 
         prompt += (
             f"Produce only the {target_name} translation, without any additional explanations or commentary. "

@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
-from translate_gemma_ui.glossary import match_glossary
+from translate_gemma_ui.glossary import build_glossary_prompt
 from translate_gemma_ui.text_splitter import create_windows, merge_translations, split_sentences
 from translate_gemma_ui.translator import TranslationContext, Translator
 
@@ -31,8 +31,10 @@ def translate_text(
     windows = create_windows(sentences, translator.max_tokens, token_count_fn)
 
     if len(windows) <= 1:
-        matched = match_glossary(text, glossary) if glossary else []
-        context = TranslationContext(previous=[], following=[], glossary=matched) if matched else None
+        glossary_prompt = build_glossary_prompt(text, glossary)
+        context = (
+            TranslationContext(previous=[], following=[], glossary_prompt=glossary_prompt) if glossary_prompt else None
+        )
         for chunk in translator.translate(text, source_lang, target_lang, context=context):
             yield TranslationChunk(text=chunk, progress="")
         return
@@ -41,8 +43,10 @@ def translate_text(
     for i, window in enumerate(windows):
         progress = f"翻譯中... ({i + 1}/{len(windows)})"
         last_chunk = ""
-        matched = match_glossary(window.text, glossary) if glossary else []
-        context = TranslationContext(previous=[], following=[], glossary=matched) if matched else None
+        glossary_prompt = build_glossary_prompt(window.text, glossary)
+        context = (
+            TranslationContext(previous=[], following=[], glossary_prompt=glossary_prompt) if glossary_prompt else None
+        )
         try:
             for chunk in translator.translate(window.text, source_lang, target_lang, context=context):
                 last_chunk = chunk

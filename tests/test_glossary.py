@@ -1,6 +1,6 @@
 import pytest
 
-from translate_gemma_ui.glossary import format_glossary_prompt, match_glossary, parse_glossary
+from translate_gemma_ui.glossary import build_glossary_prompt, format_glossary_prompt, match_glossary, parse_glossary
 
 
 class TestParseGlossary:
@@ -94,3 +94,21 @@ class TestFormatGlossaryPrompt:
 
     def test_empty_entries_returns_empty_string(self):
         assert format_glossary_prompt([]) == ""
+
+
+class TestBuildGlossaryPrompt:
+    def test_matches_and_formats_in_one_step(self):
+        glossary = [("API", "應用程式介面"), ("dog", "狗")]
+        result = build_glossary_prompt("The API is ready", glossary)
+        assert "API -> 應用程式介面" in result
+        assert "dog" not in result
+
+    def test_no_match_returns_empty(self):
+        glossary = [("API", "應用程式介面")]
+        assert build_glossary_prompt("Hello world", glossary) == ""
+
+    def test_none_glossary_returns_empty(self):
+        assert build_glossary_prompt("Hello", None) == ""
+
+    def test_empty_glossary_returns_empty(self):
+        assert build_glossary_prompt("Hello", []) == ""

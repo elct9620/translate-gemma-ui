@@ -98,65 +98,44 @@ class TestTranslateSrt:
         last = chunks[-1]
         assert last.entries[0].text != "Hello"
 
-    def test_passes_context_to_translator(self):
+    def test_passes_context_to_translator(self, spy_translator):
         """Verify that translate_srt passes TranslationContext to the translator."""
-        recorded_contexts = []
-
-        class SpyTranslator(FakeTranslator):
-            def translate(self, text, source_lang, target_lang, context=None):
-                recorded_contexts.append(context)
-                yield from super().translate(text, source_lang, target_lang, context=context)
-
         entries = [_entry(1, "A"), _entry(2, "B"), _entry(3, "C")]
-        list(translate_srt(SpyTranslator(), entries, "en", "ja", context_size=1))
+        list(translate_srt(spy_translator, entries, "en", "ja", context_size=1))
 
         # Entry A: no previous, following=["B"]
-        assert isinstance(recorded_contexts[0], TranslationContext)
-        assert recorded_contexts[0].previous == []
-        assert recorded_contexts[0].following == ["B"]
+        assert isinstance(spy_translator.recorded_contexts[0], TranslationContext)
+        assert spy_translator.recorded_contexts[0].previous == []
+        assert spy_translator.recorded_contexts[0].following == ["B"]
 
         # Entry B: previous=["A"], following=["C"]
-        assert recorded_contexts[1].previous == ["A"]
-        assert recorded_contexts[1].following == ["C"]
+        assert spy_translator.recorded_contexts[1].previous == ["A"]
+        assert spy_translator.recorded_contexts[1].following == ["C"]
 
         # Entry C: previous=["B"], no following
-        assert recorded_contexts[2].previous == ["B"]
-        assert recorded_contexts[2].following == []
+        assert spy_translator.recorded_contexts[2].previous == ["B"]
+        assert spy_translator.recorded_contexts[2].following == []
 
-    def test_passes_none_context_when_size_zero(self):
+    def test_passes_none_context_when_size_zero(self, spy_translator):
         """Verify that context is None when context_size=0."""
-        recorded_contexts = []
-
-        class SpyTranslator(FakeTranslator):
-            def translate(self, text, source_lang, target_lang, context=None):
-                recorded_contexts.append(context)
-                yield from super().translate(text, source_lang, target_lang, context=context)
-
         entries = [_entry(1, "A"), _entry(2, "B")]
-        list(translate_srt(SpyTranslator(), entries, "en", "ja", context_size=0))
+        list(translate_srt(spy_translator, entries, "en", "ja", context_size=0))
 
-        assert all(ctx is None for ctx in recorded_contexts)
+        assert all(ctx is None for ctx in spy_translator.recorded_contexts)
 
-    def test_glossary_entries_passed_to_translator(self):
+    def test_glossary_entries_passed_to_translator(self, spy_translator):
         """Verify matched glossary entries are included in context."""
-        recorded_contexts = []
-
-        class SpyTranslator(FakeTranslator):
-            def translate(self, text, source_lang, target_lang, context=None):
-                recorded_contexts.append(context)
-                yield from super().translate(text, source_lang, target_lang, context=context)
-
         glossary = [("API", "應用程式介面"), ("dog", "狗")]
         entries = [_entry(1, "The API is ready"), _entry(2, "Hello world")]
-        list(translate_srt(SpyTranslator(), entries, "en", "zh-TW", context_size=0, glossary=glossary))
+        list(translate_srt(spy_translator, entries, "en", "zh-TW", context_size=0, glossary=glossary))
 
-        # First entry contains "API" → glossary should include it
-        assert recorded_contexts[0] is not None
-        assert ("API", "應用程式介面") in recorded_contexts[0].glossary
-        assert ("dog", "狗") not in recorded_contexts[0].glossary
+        # First entry contains "API" → glossary_prompt should include it
+        assert spy_translator.recorded_contexts[0] is not None
+        assert "API -> 應用程式介面" in spy_translator.recorded_contexts[0].glossary_prompt
+        assert "dog" not in spy_translator.recorded_contexts[0].glossary_prompt
 
         # Second entry has no glossary match → context is None (context_size=0, no glossary match)
-        assert recorded_contexts[1] is None or recorded_contexts[1].glossary == []
+        assert spy_translator.recorded_contexts[1] is None
 
     def test_glossary_none_works(self):
         """Verify glossary=None doesn't break anything."""

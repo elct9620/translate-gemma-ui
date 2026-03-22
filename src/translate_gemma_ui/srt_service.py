@@ -2,7 +2,7 @@ import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
 
-from translate_gemma_ui.glossary import match_glossary
+from translate_gemma_ui.glossary import build_glossary_prompt
 from translate_gemma_ui.srt_parser import SrtEntry
 from translate_gemma_ui.translator import TranslationContext, Translator
 
@@ -50,11 +50,14 @@ def translate_srt(
             continue
 
         context = _build_context(entries, i, context_size)
-        matched = match_glossary(entry.text, glossary) if glossary else []
-        if context is None and matched:
-            context = TranslationContext(previous=[], following=[], glossary=matched)
-        elif context is not None and matched:
-            context = TranslationContext(previous=context.previous, following=context.following, glossary=matched)
+        glossary_prompt = build_glossary_prompt(entry.text, glossary)
+        if glossary_prompt:
+            if context is None:
+                context = TranslationContext(previous=[], following=[], glossary_prompt=glossary_prompt)
+            else:
+                context = TranslationContext(
+                    previous=context.previous, following=context.following, glossary_prompt=glossary_prompt
+                )
 
         try:
             last_chunk = ""

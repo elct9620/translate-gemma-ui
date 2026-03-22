@@ -4,13 +4,13 @@ import re
 import unicodedata
 
 
-def _is_cjk(char: str) -> bool:
+def _is_non_latin(char: str) -> bool:
     category = unicodedata.category(char)
     return category.startswith("Lo")
 
 
-def _has_cjk(text: str) -> bool:
-    return any(_is_cjk(c) for c in text)
+def _has_non_latin(text: str) -> bool:
+    return any(_is_non_latin(c) for c in text)
 
 
 def parse_glossary(content: str) -> list[tuple[str, str]]:
@@ -36,7 +36,7 @@ def match_glossary(text: str, glossary: list[tuple[str, str]]) -> list[tuple[str
     """Return glossary entries whose source term appears in text (case-insensitive, whole-word)."""
     matched: list[tuple[str, str]] = []
     for source, target in glossary:
-        if _has_cjk(source):
+        if _has_non_latin(source):
             if source.lower() in text.lower():
                 matched.append((source, target))
         else:
@@ -52,3 +52,11 @@ def format_glossary_prompt(entries: list[tuple[str, str]]) -> str:
         return ""
     lines = [f"{source} -> {target}" for source, target in entries]
     return "[Glossary]\n" + "\n".join(lines) + "\n"
+
+
+def build_glossary_prompt(text: str, glossary: list[tuple[str, str]] | None) -> str:
+    """Match glossary entries against text and return formatted prompt section."""
+    if not glossary:
+        return ""
+    matched = match_glossary(text, glossary)
+    return format_glossary_prompt(matched)

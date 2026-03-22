@@ -71,13 +71,13 @@ class TestTranslationContext:
         assert ctx.previous == []
         assert ctx.following == []
 
-    def test_glossary_defaults_to_empty(self):
+    def test_glossary_prompt_defaults_to_empty(self):
         ctx = TranslationContext(previous=[], following=[])
-        assert ctx.glossary == []
+        assert ctx.glossary_prompt == ""
 
-    def test_glossary_with_entries(self):
-        ctx = TranslationContext(previous=[], following=[], glossary=[("API", "應用程式介面")])
-        assert ctx.glossary == [("API", "應用程式介面")]
+    def test_glossary_prompt_with_value(self):
+        ctx = TranslationContext(previous=[], following=[], glossary_prompt="[Glossary]\nAPI -> 應用程式介面\n")
+        assert "API -> 應用程式介面" in ctx.glossary_prompt
 
 
 class TestFakeTranslatorWithContext:
@@ -214,7 +214,7 @@ class TestBuildContextPromptWithGlossary:
         from translate_gemma_ui.translator import TranslateGemmaTranslator
 
         translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
-        ctx = TranslationContext(previous=[], following=[], glossary=[("API", "應用程式介面")])
+        ctx = TranslationContext(previous=[], following=[], glossary_prompt="[Glossary]\nAPI -> 應用程式介面\n")
         prompt = translator._build_context_prompt("Use the API", "en", "zh-TW", ctx)
 
         assert "[Glossary]" in prompt
@@ -229,7 +229,7 @@ class TestBuildContextPromptWithGlossary:
         from translate_gemma_ui.translator import TranslateGemmaTranslator
 
         translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
-        ctx = TranslationContext(previous=[], following=[], glossary=[])
+        ctx = TranslationContext(previous=[], following=[])
         prompt = translator._build_context_prompt("Hello", "en", "zh-TW", ctx)
 
         assert "[Glossary]" not in prompt
