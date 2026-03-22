@@ -104,7 +104,7 @@ class TestTranslateGemmaQuantization:
     @patch("transformers.BitsAndBytesConfig")
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_enables_quantization_when_vram_below_threshold(self, mock_processor_cls, mock_model_cls, mock_bnb_config):
+    def test_reports_quantized_when_vram_below_threshold(self, mock_processor_cls, mock_model_cls, mock_bnb_config):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
         mock_bnb_config.return_value = MagicMock()
@@ -114,6 +114,21 @@ class TestTranslateGemmaQuantization:
         translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token", vram_bytes=4 * 1024**3)
 
         assert translator.is_quantized is True
+
+    @patch("transformers.BitsAndBytesConfig")
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_passes_quantization_config_when_vram_below_threshold(
+        self, mock_processor_cls, mock_model_cls, mock_bnb_config
+    ):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+        mock_bnb_config.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        TranslateGemmaTranslator(model_id="test-model", token="fake-token", vram_bytes=4 * 1024**3)
+
         call_kwargs = mock_model_cls.from_pretrained.call_args[1]
         assert "quantization_config" in call_kwargs
         assert "dtype" not in call_kwargs
@@ -132,6 +147,18 @@ class TestTranslateGemmaQuantization:
         call_kwargs = mock_model_cls.from_pretrained.call_args[1]
         assert "quantization_config" not in call_kwargs
         assert "dtype" in call_kwargs
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_no_quantization_when_vram_equals_threshold(self, mock_processor_cls, mock_model_cls):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token", vram_bytes=8 * 1024**3)
+
+        assert translator.is_quantized is False
 
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")

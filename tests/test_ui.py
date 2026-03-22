@@ -57,60 +57,14 @@ class TestModelStatus:
         assert "開發模式" in status
 
     def test_shows_success_for_real_translator(self):
-        class StubTranslator:
-            @property
-            def languages(self):
-                return {"en": "English"}
-
-            @property
-            def max_tokens(self):
-                return 1024
-
-            @property
-            def is_ready(self):
-                return True
-
-            @property
-            def is_quantized(self):
-                return False
-
-            @property
-            def model_name(self):
-                return "google/translategemma-4b-it"
-
-            def translate(self, text, source_lang, target_lang):
-                yield text
-
-        status = _build_model_status(StubTranslator())
+        stub = MagicMock(model_name="google/translategemma-4b-it", is_quantized=False)
+        status = _build_model_status(stub)
         assert "已載入" in status
         assert "量化" not in status
 
     def test_shows_quantized_status_for_quantized_model(self):
-        class QuantizedStub:
-            @property
-            def languages(self):
-                return {"en": "English"}
-
-            @property
-            def max_tokens(self):
-                return 1024
-
-            @property
-            def is_ready(self):
-                return True
-
-            @property
-            def is_quantized(self):
-                return True
-
-            @property
-            def model_name(self):
-                return "google/translategemma-4b-it"
-
-            def translate(self, text, source_lang, target_lang):
-                yield text
-
-        status = _build_model_status(QuantizedStub())
+        stub = MagicMock(model_name="google/translategemma-4b-it", is_quantized=True)
+        status = _build_model_status(stub)
         assert "已載入" in status
         assert "量化" in status
 
