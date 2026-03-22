@@ -117,9 +117,7 @@
 
 Decided:
 - 前端框架：Gradio（適合快速建構 ML 模型的互動式 Web 介面，降低前端開發成本）
-
-To be decided:
-- Daggr 的 Pipeline 機制是否更適合本專案的翻譯流程（需後續評估，可能影響批次翻譯的流程編排方式）
+- Daggr 不適用於本專案（Daggr 為工作流程編排工具，非 UI 框架；本專案為單一模型翻譯工具，Gradio 已涵蓋所有 UI 需求）
 
 ## Error Scenarios
 
