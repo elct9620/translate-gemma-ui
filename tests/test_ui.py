@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import gradio as gr
 import pytest
@@ -95,6 +95,18 @@ class TestLoadModelFn:
         fn = _make_load_model_fn(translator_ref)
         result = fn("   ")
         assert "載入失敗" in result
+
+    @patch("translate_gemma_ui.translator.TranslateGemmaTranslator")
+    def test_load_success_updates_translator_ref(self, mock_cls):
+        mock_translator = MagicMock()
+        mock_cls.return_value = mock_translator
+
+        translator_ref = [FakeTranslator()]
+        fn = _make_load_model_fn(translator_ref)
+        result = fn("test-token")
+
+        assert "載入成功" in result
+        assert translator_ref[0] is mock_translator
 
 
 class TestTranslateFn:
