@@ -45,6 +45,10 @@ class TestFakeTranslator:
         for i in range(1, len(results)):
             assert len(results[i]) > len(results[i - 1])
 
+    def test_fake_translator_model_name(self):
+        translator = FakeTranslator()
+        assert translator.model_name == "FakeTranslator"
+
     def test_fake_translator_conforms_to_protocol(self):
         translator = FakeTranslator()
         assert isinstance(translator, Translator)

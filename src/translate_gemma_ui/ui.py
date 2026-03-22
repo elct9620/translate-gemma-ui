@@ -24,9 +24,7 @@ def _build_device_display(device_info: DeviceInfo) -> str:
 def _build_model_status(translator: Translator, error: str | None = None) -> str:
     if error:
         return f"⚠️ 模型載入失敗：{error}\n\n請輸入 HF Token 後點擊「載入模型」重試。"
-    from translate_gemma_ui.translator import FakeTranslator
-
-    if isinstance(translator, FakeTranslator):
+    if translator.model_name == "FakeTranslator":
         return "⚠️ 目前使用開發模式（FakeTranslator），翻譯結果僅為模擬。請載入模型以使用真正的翻譯功能。"
     return "✅ 模型已載入"
 

@@ -24,6 +24,11 @@ class Translator(Protocol):
         """Whether the model is loaded."""
         ...
 
+    @property
+    def model_name(self) -> str:
+        """Display name identifying this translator."""
+        ...
+
     def translate(self, text: str, source_lang: str, target_lang: str) -> Iterator[str]:
         """Yield progressively accumulated translation text (streaming)."""
         ...
@@ -46,6 +51,7 @@ class TranslateGemmaTranslator:
 
         logger.info("Loading model %s...", model_id)
 
+        self._model_name = model_id
         self._processor = AutoProcessor.from_pretrained(model_id, token=token)
         self._languages = _extract_languages_from_template(self._processor.chat_template)
 
@@ -71,6 +77,10 @@ class TranslateGemmaTranslator:
     @property
     def is_ready(self) -> bool:
         return self._is_ready
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     def translate(self, text: str, source_lang: str, target_lang: str) -> Iterator[str]:
         from transformers import TextIteratorStreamer
@@ -145,6 +155,10 @@ class FakeTranslator:
     @property
     def is_ready(self) -> bool:
         return True
+
+    @property
+    def model_name(self) -> str:
+        return "FakeTranslator"
 
     def translate(self, text: str, source_lang: str, target_lang: str) -> Iterator[str]:
         target_name = self._languages.get(target_lang, target_lang)

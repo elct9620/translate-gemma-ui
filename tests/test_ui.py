@@ -67,6 +67,10 @@ class TestModelStatus:
             def is_ready(self):
                 return True
 
+            @property
+            def model_name(self):
+                return "google/translategemma-4b-it"
+
             def translate(self, text, source_lang, target_lang):
                 yield text
 
