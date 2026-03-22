@@ -71,9 +71,14 @@ uv run python main.py
 
 啟動後，瀏覽器會自動開啟 Gradio 介面。如未自動開啟，請手動前往終端機顯示的網址（預設為 `http://127.0.0.1:7860`）。
 
-### 首次使用：載入模型
+### 首次使用：取得模型存取權限
 
-首次啟動時需要輸入 [Hugging Face Token](https://huggingface.co/settings/tokens) 以下載模型。在介面中的 HF Token 欄位輸入權杖後，點擊「載入模型」按鈕。模型會下載並快取至本地，後續啟動不需重新下載。
+TranslateGemma 是 Google 的受限模型，下載前需要先完成以下步驟：
+
+1. 前往 [TranslateGemma 4B 模型頁面](https://huggingface.co/google/translategemma-4b-it)，點擊「Agree and access repository」接受 Google 的使用授權
+2. 取得 [Hugging Face Token](https://huggingface.co/settings/tokens)
+
+完成後，在應用程式介面中的 HF Token 欄位輸入權杖，點擊「載入模型」按鈕。模型會下載並快取至本地，後續啟動不需重新下載。
 
 ### 文字翻譯
 
