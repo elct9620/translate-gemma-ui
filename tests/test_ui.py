@@ -3,7 +3,7 @@ import pytest
 
 from translate_gemma_ui.device import DeviceInfo
 from translate_gemma_ui.translator import FakeTranslator
-from translate_gemma_ui.ui import _build_device_display, _make_translate_fn, create_app
+from translate_gemma_ui.ui import _build_device_display, _make_srt_translate_fn, _make_translate_fn, create_app
 
 
 def _cpu_device():
@@ -82,4 +82,49 @@ class TestTranslateFn:
         results = list(fn(text, "en", "ja"))
         assert len(results) > 0
         _text, progress = results[-1]
+        assert "翻譯完成" in progress
+
+
+class TestSrtTranslateFn:
+    def _write_srt(self, tmp_path, content):
+        srt_file = tmp_path / "test.srt"
+        srt_file.write_text(content, encoding="utf-8")
+        return str(srt_file)
+
+    def test_no_file_raises_error(self):
+        fn = _make_srt_translate_fn(FakeTranslator())
+        with pytest.raises(gr.Error, match="上傳"):
+            list(fn(None, "en", "ja", 3))
+
+    def test_invalid_srt_raises_error(self, tmp_path):
+        path = self._write_srt(tmp_path, "not a valid srt")
+        fn = _make_srt_translate_fn(FakeTranslator())
+        with pytest.raises(gr.Error, match="格式"):
+            list(fn(path, "en", "ja", 3))
+
+    def test_same_language_raises_error(self, tmp_path):
+        path = self._write_srt(tmp_path, "1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+        fn = _make_srt_translate_fn(FakeTranslator())
+        with pytest.raises(gr.Error, match="相同"):
+            list(fn(path, "en", "en", 3))
+
+    def test_model_not_ready_raises_error(self, tmp_path):
+        class NotReadyTranslator(FakeTranslator):
+            @property
+            def is_ready(self) -> bool:
+                return False
+
+        path = self._write_srt(tmp_path, "1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+        fn = _make_srt_translate_fn(NotReadyTranslator())
+        with pytest.raises(gr.Error, match="載入"):
+            list(fn(path, "en", "ja", 3))
+
+    def test_valid_srt_produces_output(self, tmp_path):
+        path = self._write_srt(tmp_path, "1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+        fn = _make_srt_translate_fn(FakeTranslator())
+        results = list(fn(path, "en", "ja", 0))
+        assert len(results) > 0
+        progress, output_file = results[-1]
+        assert output_file is not None
+        assert output_file.endswith(".srt")
         assert "翻譯完成" in progress
