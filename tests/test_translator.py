@@ -71,6 +71,14 @@ class TestTranslationContext:
         assert ctx.previous == []
         assert ctx.following == []
 
+    def test_glossary_defaults_to_empty(self):
+        ctx = TranslationContext(previous=[], following=[])
+        assert ctx.glossary == []
+
+    def test_glossary_with_entries(self):
+        ctx = TranslationContext(previous=[], following=[], glossary=[("API", "應用程式介面")])
+        assert ctx.glossary == [("API", "應用程式介面")]
+
 
 class TestFakeTranslatorWithContext:
     def test_ignores_context(self):
@@ -194,6 +202,37 @@ class TestBuildContextPrompt:
                 consecutive_empty = 0
         # The 2 blank lines before target text are the only allowed consecutive empties
         assert max_consecutive <= 2
+
+
+class TestBuildContextPromptWithGlossary:
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_prompt_includes_glossary_section(self, mock_processor_cls, mock_model_cls):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+        ctx = TranslationContext(previous=[], following=[], glossary=[("API", "應用程式介面")])
+        prompt = translator._build_context_prompt("Use the API", "en", "zh-TW", ctx)
+
+        assert "[Glossary]" in prompt
+        assert "API -> 應用程式介面" in prompt
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_prompt_omits_glossary_when_empty(self, mock_processor_cls, mock_model_cls):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+        ctx = TranslationContext(previous=[], following=[], glossary=[])
+        prompt = translator._build_context_prompt("Hello", "en", "zh-TW", ctx)
+
+        assert "[Glossary]" not in prompt
 
 
 class TestTranslateGemmaTranslatorInit:

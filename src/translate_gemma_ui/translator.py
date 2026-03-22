@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import Thread
 from typing import Protocol, runtime_checkable
 
@@ -17,6 +17,7 @@ SUPPORTED_LANGUAGES: dict[str, str] = {
 class TranslationContext:
     previous: list[str]
     following: list[str]
+    glossary: list[tuple[str, str]] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -86,9 +87,9 @@ class TranslateGemmaTranslator:
     def model_name(self) -> str:
         return self._model_name
 
-    def _build_context_prompt(
-        self, text: str, source_lang: str, target_lang: str, context: TranslationContext
-    ) -> str:
+    def _build_context_prompt(self, text: str, source_lang: str, target_lang: str, context: TranslationContext) -> str:
+        from translate_gemma_ui.glossary import format_glossary_prompt
+
         source_name = self._languages.get(source_lang, source_lang)
         target_name = self._languages.get(target_lang, target_lang)
 
@@ -108,6 +109,10 @@ class TranslateGemmaTranslator:
         if context_lines:
             prompt += "[Context]\n" + "\n".join(context_lines) + "\n"
 
+        glossary_section = format_glossary_prompt(context.glossary)
+        if glossary_section:
+            prompt += glossary_section
+
         prompt += (
             f"Produce only the {target_name} translation, without any additional explanations or commentary. "
             f"Please translate the following {source_name} text into {target_name}:\n\n\n"
@@ -120,9 +125,7 @@ class TranslateGemmaTranslator:
     def _tokenize_inputs(self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None):
         effective_context = context if context is not None else TranslationContext(previous=[], following=[])
         prompt = self._build_context_prompt(text, source_lang, target_lang, effective_context)
-        return self._processor.tokenizer(prompt, return_tensors="pt", add_special_tokens=True).to(
-            self._model.device
-        )
+        return self._processor.tokenizer(prompt, return_tensors="pt", add_special_tokens=True).to(self._model.device)
 
     def translate(
         self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None = None

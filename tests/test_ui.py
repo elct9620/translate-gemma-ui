@@ -11,6 +11,7 @@ from translate_gemma_ui.ui import (
     _make_load_model_fn,
     _make_srt_translate_fn,
     _make_translate_fn,
+    _parse_glossary_file,
     create_app,
 )
 
@@ -169,6 +170,26 @@ class TestTranslateFn:
         translator_ref[0] = fake2
         results = list(fn("hello", "en", "ja"))
         assert len(results) > 0
+
+
+class TestParseGlossaryFile:
+    def _write_csv(self, tmp_path, content):
+        csv_file = tmp_path / "glossary.csv"
+        csv_file.write_text(content, encoding="utf-8")
+        return str(csv_file)
+
+    def test_valid_csv_returns_glossary(self, tmp_path):
+        path = self._write_csv(tmp_path, "API,應用程式介面\ncloud,雲端")
+        result = _parse_glossary_file(path)
+        assert result == [("API", "應用程式介面"), ("cloud", "雲端")]
+
+    def test_none_path_returns_none(self):
+        assert _parse_glossary_file(None) is None
+
+    def test_invalid_csv_raises_gr_error(self, tmp_path):
+        path = self._write_csv(tmp_path, "API")
+        with pytest.raises(gr.Error, match="格式"):
+            _parse_glossary_file(path)
 
 
 class TestSrtTranslateFn:

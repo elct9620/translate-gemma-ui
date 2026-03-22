@@ -137,6 +137,33 @@ class TestTranslateSrt:
 
         assert all(ctx is None for ctx in recorded_contexts)
 
+    def test_glossary_entries_passed_to_translator(self):
+        """Verify matched glossary entries are included in context."""
+        recorded_contexts = []
+
+        class SpyTranslator(FakeTranslator):
+            def translate(self, text, source_lang, target_lang, context=None):
+                recorded_contexts.append(context)
+                yield from super().translate(text, source_lang, target_lang, context=context)
+
+        glossary = [("API", "應用程式介面"), ("dog", "狗")]
+        entries = [_entry(1, "The API is ready"), _entry(2, "Hello world")]
+        list(translate_srt(SpyTranslator(), entries, "en", "zh-TW", context_size=0, glossary=glossary))
+
+        # First entry contains "API" → glossary should include it
+        assert recorded_contexts[0] is not None
+        assert ("API", "應用程式介面") in recorded_contexts[0].glossary
+        assert ("dog", "狗") not in recorded_contexts[0].glossary
+
+        # Second entry has no glossary match → context is None (context_size=0, no glossary match)
+        assert recorded_contexts[1] is None or recorded_contexts[1].glossary == []
+
+    def test_glossary_none_works(self):
+        """Verify glossary=None doesn't break anything."""
+        entries = [_entry(1, "Hello")]
+        chunks = list(translate_srt(FakeTranslator(), entries, "en", "ja", context_size=0, glossary=None))
+        assert len(chunks) > 0
+
     def test_translates_only_target_text(self):
         """Verify each subtitle is translated individually, not as a concatenated block."""
 

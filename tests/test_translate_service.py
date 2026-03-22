@@ -22,6 +22,25 @@ class TestTranslateText:
         assert len(chunks) > 0
         assert "翻譯完成" in chunks[-1].progress
 
+    def test_glossary_passed_to_translator(self):
+        recorded_contexts = []
+
+        class SpyTranslator(FakeTranslator):
+            def translate(self, text, source_lang, target_lang, context=None):
+                recorded_contexts.append(context)
+                yield from super().translate(text, source_lang, target_lang, context=context)
+
+        glossary = [("API", "應用程式介面")]
+        chunks = list(translate_text(SpyTranslator(), "The API works", "en", "zh-TW", glossary=glossary))
+        assert len(chunks) > 0
+        # For short text (single window), glossary should be in context
+        assert recorded_contexts[0] is not None
+        assert ("API", "應用程式介面") in recorded_contexts[0].glossary
+
+    def test_glossary_none_works(self):
+        chunks = list(translate_text(FakeTranslator(), "hello", "en", "ja", glossary=None))
+        assert len(chunks) > 0
+
     def test_segment_failure_preserves_original(self):
         class FailingTranslator(FakeTranslator):
             def __init__(self):
