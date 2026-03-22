@@ -17,7 +17,56 @@ def test_cuda_device_detection():
 
         info = get_device_info()
 
-    assert info == DeviceInfo(device_name="NVIDIA RTX 4090", memory_info="8.00 GB VRAM", is_cpu=False)
+    assert info == DeviceInfo(
+        device_name="NVIDIA RTX 4090", memory_info="8.00 GB VRAM", is_cpu=False, vram_bytes=8 * 1024**3
+    )
+
+
+def test_cuda_device_has_vram_bytes():
+    props = SimpleNamespace(total_mem=4 * 1024**3)
+    with (
+        patch("translate_gemma_ui.device.torch") as mock_torch,
+    ):
+        mock_torch.cuda.is_available.return_value = True
+        mock_torch.cuda.get_device_name.return_value = "NVIDIA GTX 3050"
+        mock_torch.cuda.get_device_properties.return_value = props
+
+        info = get_device_info()
+
+    assert info.vram_bytes == 4 * 1024**3
+
+
+def test_mps_device_has_no_vram_bytes():
+    system_mem = 16 * 1024**3
+    with (
+        patch("translate_gemma_ui.device.torch") as mock_torch,
+        patch("translate_gemma_ui.device._get_system_memory_bytes", return_value=system_mem),
+    ):
+        mock_torch.cuda.is_available.return_value = False
+        mock_torch.backends.mps.is_available.return_value = True
+
+        info = get_device_info()
+
+    assert info.vram_bytes is None
+
+
+def test_cpu_device_has_no_vram_bytes():
+    system_mem = 32 * 1024**3
+    with (
+        patch("translate_gemma_ui.device.torch") as mock_torch,
+        patch("translate_gemma_ui.device._get_system_memory_bytes", return_value=system_mem),
+    ):
+        mock_torch.cuda.is_available.return_value = False
+        mock_torch.backends.mps.is_available.return_value = False
+
+        info = get_device_info()
+
+    assert info.vram_bytes is None
+
+
+def test_device_info_default_vram_bytes_is_none():
+    info = DeviceInfo(device_name="CPU", memory_info="8.00 GB RAM", is_cpu=True)
+    assert info.vram_bytes is None
 
 
 def test_mps_device_detection():

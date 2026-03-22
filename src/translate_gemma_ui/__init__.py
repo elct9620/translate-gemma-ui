@@ -18,7 +18,7 @@ def create_default_app() -> gr.Blocks:
     try:
         from translate_gemma_ui.translator import TranslateGemmaTranslator
 
-        translator = TranslateGemmaTranslator()
+        translator = TranslateGemmaTranslator(vram_bytes=device_info.vram_bytes)
     except Exception as e:
         logger.exception("Failed to load model, falling back to FakeTranslator")
         model_error = str(e)

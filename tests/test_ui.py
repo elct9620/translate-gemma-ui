@@ -71,6 +71,10 @@ class TestModelStatus:
                 return True
 
             @property
+            def is_quantized(self):
+                return False
+
+            @property
             def model_name(self):
                 return "google/translategemma-4b-it"
 
@@ -79,13 +83,43 @@ class TestModelStatus:
 
         status = _build_model_status(StubTranslator())
         assert "已載入" in status
+        assert "量化" not in status
+
+    def test_shows_quantized_status_for_quantized_model(self):
+        class QuantizedStub:
+            @property
+            def languages(self):
+                return {"en": "English"}
+
+            @property
+            def max_tokens(self):
+                return 1024
+
+            @property
+            def is_ready(self):
+                return True
+
+            @property
+            def is_quantized(self):
+                return True
+
+            @property
+            def model_name(self):
+                return "google/translategemma-4b-it"
+
+            def translate(self, text, source_lang, target_lang):
+                yield text
+
+        status = _build_model_status(QuantizedStub())
+        assert "已載入" in status
+        assert "量化" in status
 
 
 class TestLoadModelFn:
     @patch("translate_gemma_ui.translator.TranslateGemmaTranslator", side_effect=RuntimeError("model not found"))
     def test_load_failure_returns_error_message(self, _mock_cls):
         translator_ref = [FakeTranslator()]
-        fn = _make_load_model_fn(translator_ref)
+        fn = _make_load_model_fn(translator_ref, _gpu_device())
         result = fn("")
         assert "載入失敗" in result
         assert isinstance(translator_ref[0], FakeTranslator)
@@ -93,7 +127,7 @@ class TestLoadModelFn:
     @patch("translate_gemma_ui.translator.TranslateGemmaTranslator", side_effect=RuntimeError("model not found"))
     def test_load_with_empty_token_still_attempts(self, _mock_cls):
         translator_ref = [FakeTranslator()]
-        fn = _make_load_model_fn(translator_ref)
+        fn = _make_load_model_fn(translator_ref, _gpu_device())
         result = fn("   ")
         assert "載入失敗" in result
 
@@ -103,11 +137,23 @@ class TestLoadModelFn:
         mock_cls.return_value = mock_translator
 
         translator_ref = [FakeTranslator()]
-        fn = _make_load_model_fn(translator_ref)
+        fn = _make_load_model_fn(translator_ref, _gpu_device())
         result = fn("test-token")
 
         assert "載入成功" in result
         assert translator_ref[0] is mock_translator
+
+    @patch("translate_gemma_ui.translator.TranslateGemmaTranslator")
+    def test_load_passes_vram_bytes_to_translator(self, mock_cls):
+        mock_cls.return_value = MagicMock()
+        device = DeviceInfo(device_name="GTX 3050", memory_info="4.00 GB VRAM", is_cpu=False, vram_bytes=4 * 1024**3)
+
+        translator_ref = [FakeTranslator()]
+        fn = _make_load_model_fn(translator_ref, device)
+        fn("test-token")
+
+        call_kwargs = mock_cls.call_args[1]
+        assert call_kwargs["vram_bytes"] == 4 * 1024**3
 
 
 class TestTranslateFn:

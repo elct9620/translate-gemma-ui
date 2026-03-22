@@ -96,3 +96,70 @@ class TestTranslateGemmaTranslatorInit:
 
         translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
         assert translator.is_ready is True
+
+
+class TestTranslateGemmaQuantization:
+    """Tests for automatic 4-bit quantization when VRAM is insufficient."""
+
+    @patch("transformers.BitsAndBytesConfig")
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_enables_quantization_when_vram_below_threshold(self, mock_processor_cls, mock_model_cls, mock_bnb_config):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+        mock_bnb_config.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token", vram_bytes=4 * 1024**3)
+
+        assert translator.is_quantized is True
+        call_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert "quantization_config" in call_kwargs
+        assert "dtype" not in call_kwargs
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_no_quantization_when_vram_sufficient(self, mock_processor_cls, mock_model_cls):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token", vram_bytes=16 * 1024**3)
+
+        assert translator.is_quantized is False
+        call_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert "quantization_config" not in call_kwargs
+        assert "dtype" in call_kwargs
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_no_quantization_when_vram_bytes_is_none(self, mock_processor_cls, mock_model_cls):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token", vram_bytes=None)
+
+        assert translator.is_quantized is False
+
+    @patch("transformers.BitsAndBytesConfig", side_effect=ImportError("No module named 'bitsandbytes'"))
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_fallback_when_bitsandbytes_missing(self, mock_processor_cls, mock_model_cls, _mock_bnb):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token", vram_bytes=4 * 1024**3)
+
+        assert translator.is_quantized is False
+        call_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert "dtype" in call_kwargs
+
+    def test_fake_translator_is_not_quantized(self):
+        translator = FakeTranslator()
+        assert translator.is_quantized is False

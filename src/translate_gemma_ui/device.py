@@ -9,6 +9,7 @@ class DeviceInfo:
     device_name: str
     memory_info: str
     is_cpu: bool
+    vram_bytes: int | None = None
 
 
 def _format_memory(total_bytes: int, label: str) -> str:
@@ -35,6 +36,7 @@ def get_device_info() -> DeviceInfo:
             device_name=torch.cuda.get_device_name(0),
             memory_info=_format_memory(props.total_mem, "VRAM"),
             is_cpu=False,
+            vram_bytes=props.total_mem,
         )
 
     if torch.backends.mps.is_available():

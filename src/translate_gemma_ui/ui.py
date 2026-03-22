@@ -40,6 +40,8 @@ def _build_model_status(translator: Translator, error: str | None = None) -> str
         return f"⚠️ 模型載入失敗：{error}\n\n請輸入 HF Token 後點擊「載入模型」重試。"
     if translator.model_name == "FakeTranslator":
         return "⚠️ 目前使用開發模式（FakeTranslator），翻譯結果僅為模擬。請載入模型以使用真正的翻譯功能。"
+    if translator.is_quantized:
+        return "✅ 模型已載入（4-bit 量化模式）"
     return "✅ 模型已載入"
 
 
@@ -126,14 +128,16 @@ def _make_srt_translate_fn(
 
 def _make_load_model_fn(
     translator_ref: list[Translator],
+    device_info: DeviceInfo,
 ) -> Callable[[str], str]:
     def load_model(token: str) -> str:
         from translate_gemma_ui.translator import TranslateGemmaTranslator
 
         token_value = token.strip() if token and token.strip() else None
         try:
-            translator_ref[0] = TranslateGemmaTranslator(token=token_value)
-            return "✅ 模型載入成功"
+            translator_ref[0] = TranslateGemmaTranslator(token=token_value, vram_bytes=device_info.vram_bytes)
+            quantized_note = "（4-bit 量化模式）" if translator_ref[0].is_quantized else ""
+            return f"✅ 模型載入成功{quantized_note}"
         except Exception as e:
             logger.exception("Failed to load model with provided token")
             return f"⚠️ 模型載入失敗：{e}"
@@ -168,7 +172,7 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
             load_model_btn = gr.Button("載入模型", variant="secondary")
 
             load_model_btn.click(
-                fn=_make_load_model_fn(translator_ref),
+                fn=_make_load_model_fn(translator_ref, device_info),
                 inputs=[hf_token_input],
                 outputs=[model_status],
             )
@@ -195,9 +199,7 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
                     with gr.Column():
                         input_text = gr.Textbox(label="輸入文字", lines=8, placeholder="請輸入要翻譯的文字...")
                         with gr.Row():
-                            text_glossary = gr.File(
-                                file_types=[".csv"], type="filepath", label="詞彙表（選填）"
-                            )
+                            text_glossary = gr.File(file_types=[".csv"], type="filepath", label="詞彙表（選填）")
                             text_glossary_mode = gr.Radio(
                                 choices=GLOSSARY_MODE_CHOICES, value="pre", label="詞彙替換方式"
                             )
@@ -220,9 +222,7 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
                         srt_mode = gr.Radio(choices=srt_mode_choices, value="batch", label="翻譯模式")
                         srt_batch_size = gr.Number(value=1, minimum=1, label="每批字幕數 (N)", precision=0)
                         with gr.Row():
-                            srt_glossary = gr.File(
-                                file_types=[".csv"], type="filepath", label="詞彙表（選填）"
-                            )
+                            srt_glossary = gr.File(file_types=[".csv"], type="filepath", label="詞彙表（選填）")
                             srt_glossary_mode = gr.Radio(
                                 choices=GLOSSARY_MODE_CHOICES, value="pre", label="詞彙替換方式"
                             )

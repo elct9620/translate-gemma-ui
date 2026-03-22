@@ -5,6 +5,8 @@ from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
+_QUANTIZATION_VRAM_THRESHOLD = 8 * 1024**3  # 8 GB
+
 SUPPORTED_LANGUAGES: dict[str, str] = {
     "en": "English",
     "zh-TW": "Chinese (Traditional)",
@@ -30,6 +32,11 @@ class Translator(Protocol):
         ...
 
     @property
+    def is_quantized(self) -> bool:
+        """Whether the model was loaded with quantization."""
+        ...
+
+    @property
     def model_name(self) -> str:
         """Display name identifying this translator."""
         ...
@@ -40,7 +47,12 @@ class Translator(Protocol):
 
 
 class TranslateGemmaTranslator:
-    def __init__(self, model_id: str = "google/translategemma-4b-it", token: str | None = None):
+    def __init__(
+        self,
+        model_id: str = "google/translategemma-4b-it",
+        token: str | None = None,
+        vram_bytes: int | None = None,
+    ):
         import torch
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
@@ -51,12 +63,32 @@ class TranslateGemmaTranslator:
         self._languages = SUPPORTED_LANGUAGES
 
         dtype = torch.bfloat16 if torch.cuda.is_available() or torch.backends.mps.is_available() else torch.float32
-        self._model = AutoModelForImageTextToText.from_pretrained(
-            model_id,
-            device_map="auto",
-            dtype=dtype,
-            token=token,
-        )
+
+        quantization_config = None
+        self._is_quantized = False
+
+        if vram_bytes is not None and vram_bytes < _QUANTIZATION_VRAM_THRESHOLD:
+            try:
+                from transformers import BitsAndBytesConfig
+
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                    bnb_4bit_use_double_quant=True,
+                )
+                self._is_quantized = True
+                logger.info("VRAM (%.2f GB) below threshold; enabling 4-bit quantization", vram_bytes / (1024**3))
+            except ImportError:
+                logger.warning("bitsandbytes not installed; loading without quantization (may OOM)")
+
+        load_kwargs: dict = {"device_map": "auto", "token": token}
+        if quantization_config is not None:
+            load_kwargs["quantization_config"] = quantization_config
+        else:
+            load_kwargs["dtype"] = dtype
+
+        self._model = AutoModelForImageTextToText.from_pretrained(model_id, **load_kwargs)
         self._max_tokens = getattr(self._model.config, "max_position_embeddings", 8192)
         self._is_ready = True
         logger.info("Model loaded successfully on %s", self._model.device)
@@ -72,6 +104,10 @@ class TranslateGemmaTranslator:
     @property
     def is_ready(self) -> bool:
         return self._is_ready
+
+    @property
+    def is_quantized(self) -> bool:
+        return self._is_quantized
 
     @property
     def model_name(self) -> str:
@@ -138,6 +174,10 @@ class FakeTranslator:
     @property
     def is_ready(self) -> bool:
         return True
+
+    @property
+    def is_quantized(self) -> bool:
+        return False
 
     @property
     def model_name(self) -> str:
