@@ -40,13 +40,13 @@ def _extract_languages_from_template(chat_template: str) -> dict[str, str]:
 
 
 class TranslateGemmaTranslator:
-    def __init__(self, model_id: str = "google/translategemma-4b-it"):
+    def __init__(self, model_id: str = "google/translategemma-4b-it", token: str | None = None):
         import torch
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
         logger.info("Loading model %s...", model_id)
 
-        self._processor = AutoProcessor.from_pretrained(model_id)
+        self._processor = AutoProcessor.from_pretrained(model_id, token=token)
         self._languages = _extract_languages_from_template(self._processor.chat_template)
 
         dtype = torch.bfloat16 if torch.cuda.is_available() or torch.backends.mps.is_available() else torch.float32
@@ -54,6 +54,7 @@ class TranslateGemmaTranslator:
             model_id,
             device_map="auto",
             torch_dtype=dtype,
+            token=token,
         )
         self._max_tokens = getattr(self._model.config, "max_position_embeddings", 8192)
         self._is_ready = True

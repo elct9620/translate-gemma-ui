@@ -1,3 +1,4 @@
+import logging
 import tempfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -10,6 +11,8 @@ from translate_gemma_ui.srt_service import translate_srt
 from translate_gemma_ui.translate_service import translate_text
 from translate_gemma_ui.translator import Translator
 
+logger = logging.getLogger(__name__)
+
 
 def _build_device_display(device_info: DeviceInfo) -> str:
     parts = [f"**裝置：** {device_info.device_name} ({device_info.memory_info})"]
@@ -18,10 +21,21 @@ def _build_device_display(device_info: DeviceInfo) -> str:
     return "\n\n".join(parts)
 
 
+def _build_model_status(translator: Translator, error: str | None = None) -> str:
+    if error:
+        return f"⚠️ 模型載入失敗：{error}\n\n請輸入 HF Token 後點擊「載入模型」重試。"
+    from translate_gemma_ui.translator import FakeTranslator
+
+    if isinstance(translator, FakeTranslator):
+        return "⚠️ 目前使用開發模式（FakeTranslator），翻譯結果僅為模擬。請載入模型以使用真正的翻譯功能。"
+    return "✅ 模型已載入"
+
+
 def _make_translate_fn(
-    translator: Translator,
+    translator_ref: list[Translator],
 ) -> Callable[..., Iterator[tuple[str, str]]]:
     def translate(text: str, source_lang: str, target_lang: str) -> Iterator[tuple[str, str]]:
+        translator = translator_ref[0]
         if not translator.is_ready:
             raise gr.Error("模型載入中，請稍候")
         if not text or not text.strip():
@@ -36,11 +50,12 @@ def _make_translate_fn(
 
 
 def _make_srt_translate_fn(
-    translator: Translator,
+    translator_ref: list[Translator],
 ) -> Callable[..., Iterator[tuple[str, str | None]]]:
     def translate(
         file_path: str | None, source_lang: str, target_lang: str, context_size: int
     ) -> Iterator[tuple[str, str | None]]:
+        translator = translator_ref[0]
         if not translator.is_ready:
             raise gr.Error("模型載入中，請稍候")
         if not file_path:
@@ -62,6 +77,23 @@ def _make_srt_translate_fn(
     return translate
 
 
+def _make_load_model_fn(
+    translator_ref: list[Translator],
+) -> Callable[[str], str]:
+    def load_model(token: str) -> str:
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        token_value = token.strip() if token and token.strip() else None
+        try:
+            translator_ref[0] = TranslateGemmaTranslator(token=token_value)
+            return "✅ 模型載入成功"
+        except Exception as e:
+            logger.exception("Failed to load model with provided token")
+            return f"⚠️ 模型載入失敗：{e}"
+
+    return load_model
+
+
 def _write_srt_temp(entries: list[SrtEntry], original_path: str) -> str:
     stem = Path(original_path).stem
     output_name = f"{stem}_translated.srt"
@@ -70,12 +102,31 @@ def _write_srt_temp(entries: list[SrtEntry], original_path: str) -> str:
     return str(output_path)
 
 
-def create_app(translator: Translator, device_info: DeviceInfo) -> gr.Blocks:
+def create_app(
+    translator: Translator, device_info: DeviceInfo, *, model_error: str | None = None
+) -> gr.Blocks:
+    translator_ref: list[Translator] = [translator]
     lang_choices = [(name, code) for code, name in translator.languages.items()]
 
     with gr.Blocks(title="TranslateGemma UI") as app:
         gr.Markdown("# TranslateGemma UI")
         gr.Markdown(_build_device_display(device_info))
+
+        with gr.Accordion("模型設定", open=model_error is not None):
+            model_status = gr.Markdown(_build_model_status(translator, model_error))
+            hf_token_input = gr.Textbox(
+                label="HF Token",
+                type="password",
+                placeholder="hf_...",
+                info="Hugging Face 存取權杖，可從 https://huggingface.co/settings/tokens 取得",
+            )
+            load_model_btn = gr.Button("載入模型", variant="secondary")
+
+            load_model_btn.click(
+                fn=_make_load_model_fn(translator_ref),
+                inputs=[hf_token_input],
+                outputs=[model_status],
+            )
 
         with gr.Row():
             source_lang = gr.Dropdown(
@@ -99,7 +150,7 @@ def create_app(translator: Translator, device_info: DeviceInfo) -> gr.Blocks:
                 progress_text = gr.Markdown("")
 
                 translate_btn.click(
-                    fn=_make_translate_fn(translator),
+                    fn=_make_translate_fn(translator_ref),
                     inputs=[input_text, source_lang, target_lang],
                     outputs=[output_text, progress_text],
                     show_progress="full",
@@ -113,7 +164,7 @@ def create_app(translator: Translator, device_info: DeviceInfo) -> gr.Blocks:
                 srt_output_file = gr.File(label="下載翻譯結果", interactive=False)
 
                 srt_translate_btn.click(
-                    fn=_make_srt_translate_fn(translator),
+                    fn=_make_srt_translate_fn(translator_ref),
                     inputs=[srt_file, source_lang, target_lang, context_slider],
                     outputs=[srt_progress, srt_output_file],
                     show_progress="full",

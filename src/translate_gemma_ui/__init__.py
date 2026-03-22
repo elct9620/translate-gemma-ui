@@ -1,7 +1,6 @@
 """TranslateGemma UI - Local translation tool powered by TranslateGemma 4B."""
 
 import logging
-import os
 
 import gradio as gr
 
@@ -14,21 +13,18 @@ def create_default_app() -> gr.Blocks:
     from translate_gemma_ui.ui import create_app
 
     device_info = get_device_info()
+    model_error: str | None = None
 
-    hf_token = os.environ.get("HF_TOKEN")
-    if hf_token:
-        try:
-            from translate_gemma_ui.translator import TranslateGemmaTranslator
+    try:
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
 
-            translator = TranslateGemmaTranslator()
-        except Exception:
-            logger.exception("Failed to load model, falling back to FakeTranslator")
-            translator = FakeTranslator()
-    else:
-        logger.info("HF_TOKEN not set, using FakeTranslator for development")
+        translator = TranslateGemmaTranslator()
+    except Exception as e:
+        logger.exception("Failed to load model, falling back to FakeTranslator")
+        model_error = str(e)
         translator = FakeTranslator()
 
-    return create_app(translator, device_info)
+    return create_app(translator, device_info, model_error=model_error)
 
 
 app = create_default_app()
