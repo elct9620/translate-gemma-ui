@@ -83,6 +83,109 @@ class TestFakeTranslatorWithContext:
         assert results[-1] == results_without[-1]
 
 
+class TestBuildContextPrompt:
+    """Tests for TranslateGemmaTranslator._build_context_prompt output format."""
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_prompt_contains_control_tokens(self, mock_processor_cls, mock_model_cls):
+        mock_processor = MagicMock()
+        mock_processor.chat_template = '"en": "English", "zh-TW": "Chinese"'
+        mock_processor_cls.from_pretrained.return_value = mock_processor
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+        ctx = TranslationContext(previous=["Hello"], following=["World"])
+        prompt = translator._build_context_prompt("Test text", "en", "zh-TW", ctx)
+
+        assert prompt.startswith("<start_of_turn>user\n")
+        assert prompt.endswith("<start_of_turn>model\n")
+        assert "<end_of_turn>" in prompt
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_prompt_contains_context_section(self, mock_processor_cls, mock_model_cls):
+        mock_processor = MagicMock()
+        mock_processor.chat_template = '"en": "English", "zh-TW": "Chinese"'
+        mock_processor_cls.from_pretrained.return_value = mock_processor
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+        ctx = TranslationContext(previous=["prev line"], following=["next line"])
+        prompt = translator._build_context_prompt("Target", "en", "zh-TW", ctx)
+
+        assert "[Context]" in prompt
+        assert "Previous: prev line" in prompt
+        assert "Next: next line" in prompt
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_prompt_places_target_text_after_translate_instruction(self, mock_processor_cls, mock_model_cls):
+        mock_processor = MagicMock()
+        mock_processor.chat_template = '"en": "English", "zh-TW": "Chinese"'
+        mock_processor_cls.from_pretrained.return_value = mock_processor
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+        ctx = TranslationContext(previous=["prev"], following=[])
+        prompt = translator._build_context_prompt("My target text", "en", "zh-TW", ctx)
+
+        # Target text should appear after the translate instruction, before end_of_turn
+        instruction_idx = prompt.index("Please translate the following")
+        target_idx = prompt.index("My target text")
+        end_idx = prompt.index("<end_of_turn>")
+        assert instruction_idx < target_idx < end_idx
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_prompt_omits_context_section_when_both_empty(self, mock_processor_cls, mock_model_cls):
+        mock_processor = MagicMock()
+        mock_processor.chat_template = '"en": "English", "zh-TW": "Chinese"'
+        mock_processor_cls.from_pretrained.return_value = mock_processor
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+        ctx = TranslationContext(previous=[], following=[])
+        prompt = translator._build_context_prompt("Text", "en", "zh-TW", ctx)
+
+        assert "[Context]" not in prompt
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_prompt_has_no_extra_blank_lines_between_sections(self, mock_processor_cls, mock_model_cls):
+        mock_processor = MagicMock()
+        mock_processor.chat_template = '"en": "English", "zh-TW": "Chinese"'
+        mock_processor_cls.from_pretrained.return_value = mock_processor
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+        ctx = TranslationContext(previous=["prev"], following=["next"])
+        prompt = translator._build_context_prompt("Text", "en", "zh-TW", ctx)
+
+        # No triple+ newlines except the intentional ones before target text
+        lines = prompt.split("\n")
+        consecutive_empty = 0
+        max_consecutive = 0
+        for line in lines:
+            if line.strip() == "":
+                consecutive_empty += 1
+                max_consecutive = max(max_consecutive, consecutive_empty)
+            else:
+                consecutive_empty = 0
+        # The 2 blank lines before target text are the only allowed consecutive empties
+        assert max_consecutive <= 2
+
+
 class TestTranslateGemmaTranslatorInit:
     """Tests for TranslateGemmaTranslator initialization behavior.
 

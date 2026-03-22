@@ -97,12 +97,12 @@ class TranslateGemmaTranslator:
         source_name = self._languages.get(source_lang, source_lang)
         target_name = self._languages.get(target_lang, target_lang)
 
-        parts = [
+        prompt = (
             f"<start_of_turn>user\n"
             f"You are a professional {source_name} ({source_lang}) to {target_name} ({target_lang}) translator. "
             f"Your goal is to accurately convey the meaning and nuances of the original {source_name} text "
             f"while adhering to {target_name} grammar, vocabulary, and cultural sensitivities.\n"
-        ]
+        )
 
         context_lines = []
         if context.previous:
@@ -111,16 +111,16 @@ class TranslateGemmaTranslator:
             context_lines.append("Next: " + " ".join(context.following))
 
         if context_lines:
-            parts.append("[Context]\n" + "\n".join(context_lines) + "\n")
+            prompt += "[Context]\n" + "\n".join(context_lines) + "\n"
 
-        parts.append(
+        prompt += (
             f"Produce only the {target_name} translation, without any additional explanations or commentary. "
             f"Please translate the following {source_name} text into {target_name}:\n\n\n"
             f"{text.strip()}<end_of_turn>\n"
             f"<start_of_turn>model\n"
         )
 
-        return "\n".join(parts)
+        return prompt
 
     def _tokenize_inputs(self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None):
         if context is not None:
