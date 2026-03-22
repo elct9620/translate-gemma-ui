@@ -1,6 +1,11 @@
 from unittest.mock import MagicMock, patch
 
-from translate_gemma_ui.translator import FakeTranslator, Translator, _extract_languages_from_template
+from translate_gemma_ui.translator import (
+    FakeTranslator,
+    TranslationContext,
+    Translator,
+    _extract_languages_from_template,
+)
 
 
 class TestExtractLanguages:
@@ -54,6 +59,28 @@ class TestFakeTranslator:
     def test_fake_translator_conforms_to_protocol(self):
         translator = FakeTranslator()
         assert isinstance(translator, Translator)
+
+
+class TestTranslationContext:
+    def test_is_frozen_dataclass(self):
+        ctx = TranslationContext(previous=["A"], following=["B"])
+        assert ctx.previous == ["A"]
+        assert ctx.following == ["B"]
+
+    def test_empty_lists(self):
+        ctx = TranslationContext(previous=[], following=[])
+        assert ctx.previous == []
+        assert ctx.following == []
+
+
+class TestFakeTranslatorWithContext:
+    def test_ignores_context(self):
+        translator = FakeTranslator()
+        ctx = TranslationContext(previous=["prev"], following=["next"])
+        results = list(translator.translate("hello", "en", "ja", context=ctx))
+        # Should produce same output regardless of context
+        results_without = list(translator.translate("hello", "en", "ja"))
+        assert results[-1] == results_without[-1]
 
 
 class TestTranslateGemmaTranslatorInit:

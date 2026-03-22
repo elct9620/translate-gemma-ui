@@ -1,10 +1,17 @@
 import logging
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 from threading import Thread
 from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TranslationContext:
+    previous: list[str]
+    following: list[str]
 
 
 @runtime_checkable
@@ -29,7 +36,9 @@ class Translator(Protocol):
         """Display name identifying this translator."""
         ...
 
-    def translate(self, text: str, source_lang: str, target_lang: str) -> Iterator[str]:
+    def translate(
+        self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None = None
+    ) -> Iterator[str]:
         """Yield progressively accumulated translation text (streaming)."""
         ...
 
@@ -82,8 +91,43 @@ class TranslateGemmaTranslator:
     def model_name(self) -> str:
         return self._model_name
 
-    def translate(self, text: str, source_lang: str, target_lang: str) -> Iterator[str]:
-        from transformers import TextIteratorStreamer
+    def _build_context_prompt(
+        self, text: str, source_lang: str, target_lang: str, context: TranslationContext
+    ) -> str:
+        source_name = self._languages.get(source_lang, source_lang)
+        target_name = self._languages.get(target_lang, target_lang)
+
+        parts = [
+            f"<start_of_turn>user\n"
+            f"You are a professional {source_name} ({source_lang}) to {target_name} ({target_lang}) translator. "
+            f"Your goal is to accurately convey the meaning and nuances of the original {source_name} text "
+            f"while adhering to {target_name} grammar, vocabulary, and cultural sensitivities.\n"
+        ]
+
+        context_lines = []
+        if context.previous:
+            context_lines.append("Previous: " + " ".join(context.previous))
+        if context.following:
+            context_lines.append("Next: " + " ".join(context.following))
+
+        if context_lines:
+            parts.append("[Context]\n" + "\n".join(context_lines) + "\n")
+
+        parts.append(
+            f"Produce only the {target_name} translation, without any additional explanations or commentary. "
+            f"Please translate the following {source_name} text into {target_name}:\n\n\n"
+            f"{text.strip()}<end_of_turn>\n"
+            f"<start_of_turn>model\n"
+        )
+
+        return "\n".join(parts)
+
+    def _tokenize_inputs(self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None):
+        if context is not None:
+            prompt = self._build_context_prompt(text, source_lang, target_lang, context)
+            return self._processor.tokenizer(prompt, return_tensors="pt", add_special_tokens=True).to(
+                self._model.device
+            )
 
         messages = [
             {
@@ -98,14 +142,20 @@ class TranslateGemmaTranslator:
                 ],
             }
         ]
-
-        inputs = self._processor.apply_chat_template(
+        return self._processor.apply_chat_template(
             messages,
             tokenize=True,
             add_generation_prompt=True,
             return_dict=True,
             return_tensors="pt",
         ).to(self._model.device)
+
+    def translate(
+        self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None = None
+    ) -> Iterator[str]:
+        from transformers import TextIteratorStreamer
+
+        inputs = self._tokenize_inputs(text, source_lang, target_lang, context)
 
         streamer = TextIteratorStreamer(
             self._processor.tokenizer,
@@ -160,7 +210,9 @@ class FakeTranslator:
     def model_name(self) -> str:
         return "FakeTranslator"
 
-    def translate(self, text: str, source_lang: str, target_lang: str) -> Iterator[str]:
+    def translate(
+        self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None = None
+    ) -> Iterator[str]:
         target_name = self._languages.get(target_lang, target_lang)
         result = f"[{target_name}] {text}"
         accumulated = ""
