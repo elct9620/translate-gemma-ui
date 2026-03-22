@@ -36,11 +36,12 @@ class TestCreateApp:
     def test_translate_handlers_share_concurrency_queue(self):
         app = create_app(FakeTranslator(), _cpu_device())
         translate_fns = [fn for fn in app.fns.values() if fn.name == "translate"]
-        assert len(translate_fns) == 2, "Expected text and SRT translate handlers"
+        assert len(translate_fns) == 3, "Expected text translate, retry, and SRT translate handlers"
 
         for fn in translate_fns:
             assert fn.concurrency_limit == 1
         assert translate_fns[0].concurrency_id == translate_fns[1].concurrency_id
+        assert translate_fns[1].concurrency_id == translate_fns[2].concurrency_id
 
 
 class TestDeviceDisplay:
@@ -149,13 +150,14 @@ class TestTranslateFn:
         fn = _make_translate_fn([FakeTranslator()])
         results = list(fn("hello", "en", "ja"))
         assert len(results) > 0
-        text, _progress = results[-1]
+        text, _progress, retry_update = results[-1]
         assert "hello" in text
+        assert retry_update == gr.update(visible=False)
 
     def test_short_text_returns_empty_progress(self):
         fn = _make_translate_fn([FakeTranslator()])
         results = list(fn("hello", "en", "ja"))
-        _text, progress = results[-1]
+        _text, progress, _retry = results[-1]
         assert progress == ""
 
     def test_long_text_shows_segment_progress(self):
@@ -168,7 +170,7 @@ class TestTranslateFn:
         text = "First sentence. Second sentence. Third sentence."
         results = list(fn(text, "en", "ja"))
         assert len(results) > 0
-        _text, progress = results[-1]
+        _text, progress, _retry = results[-1]
         assert "翻譯完成" in progress
 
     def test_uses_latest_translator_ref(self):
@@ -181,15 +183,30 @@ class TestTranslateFn:
         assert len(results) > 0
 
 
-class TestTranslateFnOOM:
-    def test_oom_raises_gr_error_with_memory_message(self):
+class TestTranslateFnRetry:
+    def test_oom_yields_error_with_retry_visible(self):
         class OOMTranslator(FakeTranslator):
             def translate(self, text, source_lang, target_lang):
                 raise OutOfMemoryError("CUDA out of memory")
 
         fn = _make_translate_fn([OOMTranslator()])
-        with pytest.raises(gr.Error, match="記憶體不足"):
-            list(fn("hello", "en", "ja"))
+        results = list(fn("hello", "en", "ja"))
+        assert len(results) >= 1
+        text, progress, retry_update = results[-1]
+        assert "記憶體不足" in progress
+        assert retry_update == gr.update(visible=True)
+
+    def test_runtime_error_yields_retry_visible(self):
+        class ErrorTranslator(FakeTranslator):
+            def translate(self, text, source_lang, target_lang):
+                raise RuntimeError("unexpected error")
+
+        fn = _make_translate_fn([ErrorTranslator()])
+        results = list(fn("hello", "en", "ja"))
+        assert len(results) >= 1
+        text, progress, retry_update = results[-1]
+        assert "錯誤" in progress
+        assert retry_update == gr.update(visible=True)
 
 
 class TestSrtTranslateFnOOM:

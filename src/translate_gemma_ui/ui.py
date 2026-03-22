@@ -47,14 +47,14 @@ def _build_model_status(translator: Translator, error: str | None = None) -> str
 
 def _make_translate_fn(
     translator_ref: list[Translator],
-) -> Callable[..., Iterator[tuple[str, str]]]:
+) -> Callable[..., Iterator[tuple[str, str, gr.update]]]:
     def translate(
         text: str,
         source_lang: str,
         target_lang: str,
         glossary_path: str | None = None,
         glossary_mode: str = "pre",
-    ) -> Iterator[tuple[str, str]]:
+    ) -> Iterator[tuple[str, str, gr.update]]:
         translator = translator_ref[0]
         if not translator.is_ready:
             raise gr.Error("模型載入中，請稍候")
@@ -68,9 +68,12 @@ def _make_translate_fn(
             for chunk in translate_text(
                 translator, text, source_lang, target_lang, glossary=glossary, glossary_mode=glossary_mode
             ):
-                yield chunk.text, chunk.progress
+                yield chunk.text, chunk.progress, gr.update(visible=False)
         except OutOfMemoryError:
-            raise gr.Error("記憶體不足，建議關閉其他應用程式或改用 CPU 模式")
+            yield "", "⚠️ 記憶體不足，建議關閉其他應用程式或改用 CPU 模式", gr.update(visible=True)
+        except Exception:
+            logger.exception("Translation failed")
+            yield "", "⚠️ 翻譯發生錯誤", gr.update(visible=True)
 
     return translate
 
@@ -213,12 +216,25 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
                     with gr.Column():
                         output_text = gr.Textbox(label="翻譯結果", lines=8, interactive=False)
                         progress_text = gr.Markdown("")
+                        retry_btn = gr.Button("重試", visible=False, variant="secondary")
+
+                translate_fn = _make_translate_fn(translator_ref)
+                translate_inputs = [input_text, source_lang, target_lang, text_glossary, text_glossary_mode]
+                translate_outputs = [output_text, progress_text, retry_btn]
 
                 translate_btn.click(
-                    fn=_make_translate_fn(translator_ref),
-                    inputs=[input_text, source_lang, target_lang, text_glossary, text_glossary_mode],
-                    outputs=[output_text, progress_text],
+                    fn=translate_fn,
+                    inputs=translate_inputs,
+                    outputs=translate_outputs,
                     show_progress="full",
+                    concurrency_limit=1,
+                    concurrency_id="translate",
+                )
+
+                retry_btn.click(
+                    fn=translate_fn,
+                    inputs=translate_inputs,
+                    outputs=translate_outputs,
                     concurrency_limit=1,
                     concurrency_id="translate",
                 )
