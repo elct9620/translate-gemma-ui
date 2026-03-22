@@ -67,14 +67,14 @@
 
 ### 模型載入
 
-- 系統啟動時載入 `google/translategemma-4b-it` 模型
-- 系統透過環境變數 `HF_TOKEN` 驗證 Hugging Face 存取權限
+- 系統啟動時嘗試載入 `google/translategemma-4b-it` 模型
+- 載入失敗時，系統退回開發模式（FakeTranslator），介面顯示模型載入失敗訊息
+- 介面提供 HF Token 輸入欄位與「載入模型」按鈕，使用者可輸入 Hugging Face 存取權杖後重新載入模型
 - 模型在首次使用時下載並快取至本地
 
 ### 語言選擇
 
-- 系統提供的語言清單以模型 chat_template 中定義的語言為準，系統啟動時從模型組態動態載入
-- 主要支援語言包含：英語、中文（簡體／繁體）、日語、韓語、西班牙語、法語、德語、葡萄牙語、俄語、阿拉伯語、印地語、義大利語、荷蘭語、波蘭語、土耳其語、越南語、泰語、印尼語等
+- 系統支援的語言為固定清單：英語（en）、繁體中文（zh-TW）、日語（ja）
 - 來源語言與目標語言不得相同
 
 ### 文字翻譯
@@ -126,7 +126,7 @@
 
 | 情境 | 系統行為 |
 |------|---------|
-| `HF_TOKEN` 未設定或無效 | 啟動時顯示明確錯誤訊息，引導使用者設定 Token |
+| 模型載入失敗（無 Token 或 Token 無效） | 退回開發模式，介面顯示失敗訊息並引導使用者透過 UI 輸入 HF Token 後重新載入 |
 | 上傳的檔案非合法 SRT 格式（見 Terminology 中 SRT 格式定義） | 顯示格式錯誤訊息，拒絕處理 |
 | 來源語言與目標語言相同 | 禁止送出翻譯請求 |
 | 文字翻譯輸入內容為空白 | 禁止送出翻譯請求 |
@@ -149,7 +149,7 @@
 |------|------|
 | TranslateGemma | Google 開放權重翻譯模型（4B 參數版本） |
 | SRT | SubRip Subtitle 格式，純文字字幕檔案格式。合法 SRT 由多個字幕區塊組成，每個區塊包含：序號（正整數）、時間軸（`HH:MM:SS,mmm --> HH:MM:SS,mmm`）、一或多行字幕文字，區塊間以空行分隔 |
-| HF_TOKEN | Hugging Face 平台的 API 存取權杖 |
+| HF Token | Hugging Face 平台的 API 存取權杖，使用者透過介面輸入 |
 | 詞彙表 | CSV 格式的來源詞與目標詞對照表 |
 | 上下文窗口 | 翻譯單句字幕時，一併提供給模型的前後鄰近字幕 |
 | 運算裝置 | 執行模型推論的硬體，可為 GPU（含 VRAM）或 CPU（使用系統記憶體） |
@@ -163,7 +163,7 @@
 | Python | >= 3.12 |
 | 作業系統 | macOS、Windows |
 | 套件管理 | uv（主要）、pip + requirements.txt（備選） |
-| 模型 | google/translategemma-4b-it（需 HF_TOKEN） |
+| 模型 | google/translategemma-4b-it（需 HF Token） |
 | 最低 GPU | NVIDIA GTX 3050（4GB VRAM） |
 | 無 GPU 時 | 系統退回 CPU 模式，功能不受限，速度較慢 |
 
