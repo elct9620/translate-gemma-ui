@@ -46,17 +46,33 @@ def match_glossary(text: str, glossary: list[tuple[str, str]]) -> list[tuple[str
     return matched
 
 
-def format_glossary_prompt(entries: list[tuple[str, str]]) -> str:
-    """Format matched glossary entries as a prompt section."""
-    if not entries:
-        return ""
-    lines = [f"{source} -> {target}" for source, target in entries]
-    return "[Glossary]\n" + "\n".join(lines) + "\n"
+def _replace_term(text: str, source: str, target: str) -> str:
+    """Replace a single glossary term in text, preserving word boundaries for Latin terms."""
+    if _has_non_latin(source):
+        return re.sub(re.escape(source), target, text, flags=re.IGNORECASE)
+    pattern = r"\b" + re.escape(source) + r"\b"
+    return re.sub(pattern, target, text, flags=re.IGNORECASE)
 
 
-def build_glossary_prompt(text: str, glossary: list[tuple[str, str]] | None) -> str:
-    """Match glossary entries against text and return formatted prompt section."""
+def apply_glossary_pre(text: str, glossary: list[tuple[str, str]] | None) -> str:
+    """Pre-processing: replace source terms with target terms before translation."""
     if not glossary:
-        return ""
+        return text
     matched = match_glossary(text, glossary)
-    return format_glossary_prompt(matched)
+    for source, target in matched:
+        text = _replace_term(text, source, target)
+    return text
+
+
+def apply_glossary_post(text: str, glossary: list[tuple[str, str]] | None) -> str:
+    """Post-processing: replace source terms remaining in translated text with target terms.
+
+    Uses substring matching (no word boundary) since translated text may mix scripts.
+    """
+    if not glossary:
+        return text
+    for source, target in glossary:
+        pattern = re.compile(re.escape(source), re.IGNORECASE)
+        if pattern.search(text):
+            text = pattern.sub(target, text)
+    return text

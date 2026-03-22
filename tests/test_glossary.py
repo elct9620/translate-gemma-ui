@@ -1,6 +1,6 @@
 import pytest
 
-from translate_gemma_ui.glossary import build_glossary_prompt, format_glossary_prompt, match_glossary, parse_glossary
+from translate_gemma_ui.glossary import apply_glossary_post, apply_glossary_pre, match_glossary, parse_glossary
 
 
 class TestParseGlossary:
@@ -84,31 +84,62 @@ class TestMatchGlossary:
         assert match_glossary("Hello", []) == []
 
 
-class TestFormatGlossaryPrompt:
-    def test_formats_entries(self):
-        entries = [("API", "應用程式介面"), ("cloud", "雲端")]
-        result = format_glossary_prompt(entries)
-        assert "[Glossary]" in result
-        assert "API -> 應用程式介面" in result
-        assert "cloud -> 雲端" in result
-
-    def test_empty_entries_returns_empty_string(self):
-        assert format_glossary_prompt([]) == ""
-
-
-class TestBuildGlossaryPrompt:
-    def test_matches_and_formats_in_one_step(self):
-        glossary = [("API", "應用程式介面"), ("dog", "狗")]
-        result = build_glossary_prompt("The API is ready", glossary)
-        assert "API -> 應用程式介面" in result
-        assert "dog" not in result
-
-    def test_no_match_returns_empty(self):
+class TestApplyGlossaryPre:
+    def test_replaces_source_with_target(self):
         glossary = [("API", "應用程式介面")]
-        assert build_glossary_prompt("Hello world", glossary) == ""
+        result = apply_glossary_pre("The API is ready", glossary)
+        assert result == "The 應用程式介面 is ready"
 
-    def test_none_glossary_returns_empty(self):
-        assert build_glossary_prompt("Hello", None) == ""
+    def test_case_insensitive_replacement(self):
+        glossary = [("API", "應用程式介面")]
+        result = apply_glossary_pre("The api is ready", glossary)
+        assert result == "The 應用程式介面 is ready"
 
-    def test_empty_glossary_returns_empty(self):
-        assert build_glossary_prompt("Hello", []) == ""
+    def test_multiple_replacements(self):
+        glossary = [("API", "應用程式介面"), ("cloud", "雲端")]
+        result = apply_glossary_pre("The API runs in the cloud", glossary)
+        assert "應用程式介面" in result
+        assert "雲端" in result
+        assert "API" not in result
+        assert "cloud" not in result
+
+    def test_no_match_returns_original(self):
+        glossary = [("API", "應用程式介面")]
+        result = apply_glossary_pre("Hello world", glossary)
+        assert result == "Hello world"
+
+    def test_none_glossary_returns_original(self):
+        assert apply_glossary_pre("Hello", None) == "Hello"
+
+    def test_empty_glossary_returns_original(self):
+        assert apply_glossary_pre("Hello", []) == "Hello"
+
+    def test_respects_word_boundary(self):
+        glossary = [("cat", "貓")]
+        result = apply_glossary_pre("The category is set", glossary)
+        assert result == "The category is set"
+
+    def test_cjk_substring_replacement(self):
+        glossary = [("翻訳", "翻譯")]
+        result = apply_glossary_pre("翻訳が完了しました", glossary)
+        assert "翻譯" in result
+        assert "翻訳" not in result
+
+
+class TestApplyGlossaryPost:
+    def test_replaces_remaining_source_terms(self):
+        glossary = [("API", "應用程式介面")]
+        result = apply_glossary_post("API已經準備好了", glossary)
+        assert "應用程式介面" in result
+        assert "API" not in result
+
+    def test_no_match_returns_original(self):
+        glossary = [("API", "應用程式介面")]
+        result = apply_glossary_post("翻譯完成", glossary)
+        assert result == "翻譯完成"
+
+    def test_none_glossary_returns_original(self):
+        assert apply_glossary_post("Hello", None) == "Hello"
+
+    def test_empty_glossary_returns_original(self):
+        assert apply_glossary_post("Hello", []) == "Hello"

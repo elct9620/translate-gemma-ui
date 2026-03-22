@@ -14,6 +14,8 @@ from translate_gemma_ui.translator import Translator
 
 logger = logging.getLogger(__name__)
 
+GLOSSARY_MODE_CHOICES = [("翻譯前替換", "pre"), ("翻譯後替換", "post")]
+
 
 def _parse_glossary_file(file_path: str | None) -> list[tuple[str, str]] | None:
     """Parse glossary CSV file, return None if no file provided."""
@@ -45,7 +47,11 @@ def _make_translate_fn(
     translator_ref: list[Translator],
 ) -> Callable[..., Iterator[tuple[str, str]]]:
     def translate(
-        text: str, source_lang: str, target_lang: str, glossary_path: str | None = None
+        text: str,
+        source_lang: str,
+        target_lang: str,
+        glossary_path: str | None = None,
+        glossary_mode: str = "pre",
     ) -> Iterator[tuple[str, str]]:
         translator = translator_ref[0]
         if not translator.is_ready:
@@ -56,7 +62,9 @@ def _make_translate_fn(
             raise gr.Error("來源語言與目標語言不得相同")
 
         glossary = _parse_glossary_file(glossary_path)
-        for chunk in translate_text(translator, text, source_lang, target_lang, glossary=glossary):
+        for chunk in translate_text(
+            translator, text, source_lang, target_lang, glossary=glossary, glossary_mode=glossary_mode
+        ):
             yield chunk.text, chunk.progress
 
     return translate
@@ -66,7 +74,11 @@ def _make_srt_translate_fn(
     translator_ref: list[Translator],
 ) -> Callable[..., Iterator[tuple[str, str | None]]]:
     def translate(
-        file_path: str | None, source_lang: str, target_lang: str, context_size: int, glossary_path: str | None = None
+        file_path: str | None,
+        source_lang: str,
+        target_lang: str,
+        glossary_path: str | None = None,
+        glossary_mode: str = "pre",
     ) -> Iterator[tuple[str, str | None]]:
         translator = translator_ref[0]
         if not translator.is_ready:
@@ -85,7 +97,7 @@ def _make_srt_translate_fn(
         glossary = _parse_glossary_file(glossary_path)
         output_path = None
         for chunk in translate_srt(
-            translator, entries, source_lang, target_lang, context_size=int(context_size), glossary=glossary
+            translator, entries, source_lang, target_lang, glossary=glossary, glossary_mode=glossary_mode
         ):
             output_path = _write_srt_temp(chunk.entries, file_path)
             yield chunk.progress, output_path
@@ -159,29 +171,32 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
         with gr.Tabs():
             with gr.TabItem("文字翻譯"):
                 input_text = gr.Textbox(label="輸入文字", lines=8, placeholder="請輸入要翻譯的文字...")
-                text_glossary = gr.File(file_types=[".csv"], type="filepath", label="詞彙表（選填）")
+                with gr.Row():
+                    text_glossary = gr.File(file_types=[".csv"], type="filepath", label="詞彙表（選填）")
+                    text_glossary_mode = gr.Radio(choices=GLOSSARY_MODE_CHOICES, value="pre", label="詞彙替換方式")
                 translate_btn = gr.Button("翻譯", variant="primary")
                 output_text = gr.Textbox(label="翻譯結果", lines=8, interactive=False)
                 progress_text = gr.Markdown("")
 
                 translate_btn.click(
                     fn=_make_translate_fn(translator_ref),
-                    inputs=[input_text, source_lang, target_lang, text_glossary],
+                    inputs=[input_text, source_lang, target_lang, text_glossary, text_glossary_mode],
                     outputs=[output_text, progress_text],
                     show_progress="full",
                 )
 
             with gr.TabItem("SRT 字幕翻譯"):
                 srt_file = gr.File(file_types=[".srt"], type="filepath", label="上傳 SRT 檔案")
-                srt_glossary = gr.File(file_types=[".csv"], type="filepath", label="詞彙表（選填）")
-                context_slider = gr.Slider(minimum=0, maximum=10, value=3, step=1, label="上下文窗口大小 (N)")
+                with gr.Row():
+                    srt_glossary = gr.File(file_types=[".csv"], type="filepath", label="詞彙表（選填）")
+                    srt_glossary_mode = gr.Radio(choices=GLOSSARY_MODE_CHOICES, value="pre", label="詞彙替換方式")
                 srt_translate_btn = gr.Button("翻譯字幕", variant="primary")
                 srt_progress = gr.Markdown("")
                 srt_output_file = gr.File(label="下載翻譯結果", interactive=False)
 
                 srt_translate_btn.click(
                     fn=_make_srt_translate_fn(translator_ref),
-                    inputs=[srt_file, source_lang, target_lang, context_slider, srt_glossary],
+                    inputs=[srt_file, source_lang, target_lang, srt_glossary, srt_glossary_mode],
                     outputs=[srt_progress, srt_output_file],
                     show_progress="full",
                 )

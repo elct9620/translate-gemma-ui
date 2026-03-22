@@ -2,6 +2,29 @@ from translate_gemma_ui.translate_service import TranslationChunk, translate_tex
 from translate_gemma_ui.translator import FakeTranslator
 
 
+class TestTranslateTextGlossary:
+    def test_pre_mode_replaces_before_translation(self, spy_translator):
+        glossary = [("API", "應用程式介面")]
+        chunks = list(
+            translate_text(spy_translator, "The API works", "en", "zh-TW", glossary=glossary, glossary_mode="pre")
+        )
+        assert len(chunks) > 0
+        assert "應用程式介面" in spy_translator.recorded_texts[0]
+        assert "API" not in spy_translator.recorded_texts[0]
+
+    def test_post_mode_replaces_after_translation(self, spy_translator):
+        glossary = [("API", "應用程式介面")]
+        chunks = list(
+            translate_text(spy_translator, "The API works", "en", "zh-TW", glossary=glossary, glossary_mode="post")
+        )
+        assert len(chunks) > 0
+        assert "API" in spy_translator.recorded_texts[0]
+
+    def test_glossary_none_works(self):
+        chunks = list(translate_text(FakeTranslator(), "hello", "en", "ja", glossary=None))
+        assert len(chunks) > 0
+
+
 class TestTranslateText:
     def test_short_text_no_progress(self):
         translator = FakeTranslator()
@@ -21,18 +44,6 @@ class TestTranslateText:
         chunks = list(translate_text(translator, "First sentence. Second sentence. Third sentence.", "en", "ja"))
         assert len(chunks) > 0
         assert "翻譯完成" in chunks[-1].progress
-
-    def test_glossary_passed_to_translator(self, spy_translator):
-        glossary = [("API", "應用程式介面")]
-        chunks = list(translate_text(spy_translator, "The API works", "en", "zh-TW", glossary=glossary))
-        assert len(chunks) > 0
-        # For short text (single window), glossary_prompt should be in context
-        assert spy_translator.recorded_contexts[0] is not None
-        assert "API -> 應用程式介面" in spy_translator.recorded_contexts[0].glossary_prompt
-
-    def test_glossary_none_works(self):
-        chunks = list(translate_text(FakeTranslator(), "hello", "en", "ja", glossary=None))
-        assert len(chunks) > 0
 
     def test_segment_failure_preserves_original(self):
         class FailingTranslator(FakeTranslator):

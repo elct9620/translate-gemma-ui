@@ -1,12 +1,15 @@
 import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from typing import Literal
 
-from translate_gemma_ui.glossary import build_glossary_prompt
+from translate_gemma_ui.glossary import apply_glossary_post, apply_glossary_pre
 from translate_gemma_ui.text_splitter import create_windows, merge_translations, split_sentences
-from translate_gemma_ui.translator import TranslationContext, Translator
+from translate_gemma_ui.translator import Translator
 
 logger = logging.getLogger(__name__)
+
+GlossaryMode = Literal["pre", "post"]
 
 
 def _estimate_tokens(text: str) -> int:
@@ -26,32 +29,31 @@ def translate_text(
     target_lang: str,
     token_count_fn: Callable[[str], int] = _estimate_tokens,
     glossary: list[tuple[str, str]] | None = None,
+    glossary_mode: GlossaryMode = "pre",
 ) -> Iterator[TranslationChunk]:
+    if glossary_mode == "pre":
+        text = apply_glossary_pre(text, glossary)
+
     sentences = split_sentences(text)
     windows = create_windows(sentences, translator.max_tokens, token_count_fn)
 
     if len(windows) <= 1:
-        glossary_prompt = build_glossary_prompt(text, glossary)
-        context = (
-            TranslationContext(previous=[], following=[], glossary_prompt=glossary_prompt) if glossary_prompt else None
-        )
-        for chunk in translator.translate(text, source_lang, target_lang, context=context):
-            yield TranslationChunk(text=chunk, progress="")
+        for chunk in translator.translate(text, source_lang, target_lang):
+            result = apply_glossary_post(chunk, glossary) if glossary_mode == "post" else chunk
+            yield TranslationChunk(text=result, progress="")
         return
 
     translations: list[str] = []
     for i, window in enumerate(windows):
         progress = f"翻譯中... ({i + 1}/{len(windows)})"
         last_chunk = ""
-        glossary_prompt = build_glossary_prompt(window.text, glossary)
-        context = (
-            TranslationContext(previous=[], following=[], glossary_prompt=glossary_prompt) if glossary_prompt else None
-        )
         try:
-            for chunk in translator.translate(window.text, source_lang, target_lang, context=context):
+            for chunk in translator.translate(window.text, source_lang, target_lang):
                 last_chunk = chunk
                 partial = translations + [last_chunk]
                 partial_result = merge_translations(windows[: len(partial)], partial, sentences)
+                if glossary_mode == "post":
+                    partial_result = apply_glossary_post(partial_result, glossary)
                 yield TranslationChunk(text=partial_result, progress=progress)
         except Exception:
             logger.exception("Segment %d/%d translation failed", i + 1, len(windows))
@@ -63,4 +65,6 @@ def translate_text(
         translations.append(last_chunk)
 
     final = merge_translations(windows, translations, sentences)
+    if glossary_mode == "post":
+        final = apply_glossary_post(final, glossary)
     yield TranslationChunk(text=final, progress=f"翻譯完成 ({len(windows)} 段)")

@@ -1,6 +1,5 @@
 import logging
 from collections.abc import Iterator
-from dataclasses import dataclass
 from threading import Thread
 from typing import Protocol, runtime_checkable
 
@@ -11,13 +10,6 @@ SUPPORTED_LANGUAGES: dict[str, str] = {
     "zh-TW": "Chinese (Traditional)",
     "ja": "Japanese",
 }
-
-
-@dataclass(frozen=True)
-class TranslationContext:
-    previous: list[str]
-    following: list[str]
-    glossary_prompt: str = ""
 
 
 @runtime_checkable
@@ -42,9 +34,7 @@ class Translator(Protocol):
         """Display name identifying this translator."""
         ...
 
-    def translate(
-        self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None = None
-    ) -> Iterator[str]:
+    def translate(self, text: str, source_lang: str, target_lang: str) -> Iterator[str]:
         """Yield progressively accumulated translation text (streaming)."""
         ...
 
@@ -87,50 +77,27 @@ class TranslateGemmaTranslator:
     def model_name(self) -> str:
         return self._model_name
 
-    def _build_context_prompt(self, text: str, source_lang: str, target_lang: str, context: TranslationContext) -> str:
-        source_name = self._languages.get(source_lang, source_lang)
-        target_name = self._languages.get(target_lang, target_lang)
-
-        prompt = (
-            f"<start_of_turn>user\n"
-            f"You are a professional {source_name} ({source_lang}) to {target_name} ({target_lang}) translator. "
-            f"Your goal is to accurately convey the meaning and nuances of the original {source_name} text "
-            f"while adhering to {target_name} grammar, vocabulary, and cultural sensitivities.\n"
-        )
-
-        context_lines = []
-        if context.previous:
-            context_lines.append("Previous: " + " ".join(context.previous))
-        if context.following:
-            context_lines.append("Next: " + " ".join(context.following))
-
-        if context_lines:
-            prompt += "[Context]\n" + "\n".join(context_lines) + "\n"
-
-        if context.glossary_prompt:
-            prompt += context.glossary_prompt
-
-        prompt += (
-            f"Produce only the {target_name} translation, without any additional explanations or commentary. "
-            f"Please translate the following {source_name} text into {target_name}:\n\n\n"
-            f"{text.strip()}<end_of_turn>\n"
-            f"<start_of_turn>model\n"
-        )
-
-        return prompt
-
-    def _tokenize_inputs(self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None):
-        effective_context = context if context is not None else TranslationContext(previous=[], following=[])
-        prompt = self._build_context_prompt(text, source_lang, target_lang, effective_context)
-        logger.debug("Chat template prompt:\n%s", prompt)
-        return self._processor.tokenizer(prompt, return_tensors="pt", add_special_tokens=True).to(self._model.device)
-
-    def translate(
-        self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None = None
-    ) -> Iterator[str]:
+    def translate(self, text: str, source_lang: str, target_lang: str) -> Iterator[str]:
         from transformers import TextIteratorStreamer
 
-        inputs = self._tokenize_inputs(text, source_lang, target_lang, context)
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "source_lang_code": source_lang,
+                        "target_lang_code": target_lang,
+                        "text": text,
+                    }
+                ],
+            }
+        ]
+        inputs = self._processor.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=True, return_dict=True, return_tensors="pt"
+        ).to(self._model.device)
+
+        logger.debug("Chat template applied for: %s -> %s", source_lang, target_lang)
 
         streamer = TextIteratorStreamer(
             self._processor.tokenizer,
@@ -176,9 +143,7 @@ class FakeTranslator:
     def model_name(self) -> str:
         return "FakeTranslator"
 
-    def translate(
-        self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None = None
-    ) -> Iterator[str]:
+    def translate(self, text: str, source_lang: str, target_lang: str) -> Iterator[str]:
         target_name = self._languages.get(target_lang, target_lang)
         result = f"[{target_name}] {text}"
         accumulated = ""

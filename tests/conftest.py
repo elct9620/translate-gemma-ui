@@ -4,15 +4,15 @@ from translate_gemma_ui.translator import FakeTranslator
 
 
 class SpyTranslator(FakeTranslator):
-    """FakeTranslator that records context passed to each translate call."""
+    """FakeTranslator that records texts passed to each translate call."""
 
     def __init__(self):
         super().__init__()
-        self.recorded_contexts: list = []
+        self.recorded_texts: list[str] = []
 
-    def translate(self, text, source_lang, target_lang, context=None):
-        self.recorded_contexts.append(context)
-        yield from super().translate(text, source_lang, target_lang, context=context)
+    def translate(self, text, source_lang, target_lang):
+        self.recorded_texts.append(text)
+        yield from super().translate(text, source_lang, target_lang)
 
 
 @pytest.fixture
