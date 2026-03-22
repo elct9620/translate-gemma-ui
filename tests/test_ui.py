@@ -33,6 +33,15 @@ class TestCreateApp:
         app = create_app(FakeTranslator(), _cpu_device(), model_error="some error")
         assert isinstance(app, gr.Blocks)
 
+    def test_translate_handlers_share_concurrency_queue(self):
+        app = create_app(FakeTranslator(), _cpu_device())
+        translate_fns = [fn for fn in app.fns.values() if fn.name == "translate"]
+        assert len(translate_fns) == 2, "Expected text and SRT translate handlers"
+
+        for fn in translate_fns:
+            assert fn.concurrency_limit == 1
+        assert translate_fns[0].concurrency_id == translate_fns[1].concurrency_id
+
 
 class TestDeviceDisplay:
     def test_cpu_shows_warning(self):

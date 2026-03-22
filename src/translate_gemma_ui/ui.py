@@ -213,6 +213,8 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
                     inputs=[input_text, source_lang, target_lang, text_glossary, text_glossary_mode],
                     outputs=[output_text, progress_text],
                     show_progress="full",
+                    concurrency_limit=1,
+                    concurrency_id="translate",
                 )
 
             with gr.TabItem("SRT 字幕翻譯"):
@@ -245,6 +247,8 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
                     ],
                     outputs=[srt_progress, srt_preview, srt_output_file],
                     show_progress="full",
+                    concurrency_limit=1,
+                    concurrency_id="translate",
                 )
 
     return app
