@@ -9,7 +9,7 @@ from translate_gemma_ui.translator import FakeTranslator
 
 
 def _entry(index: int, text: str) -> SrtEntry:
-    return SrtEntry(index=index, start_time=f"00:00:0{index},000", end_time=f"00:00:0{index + 1},000", text=text)
+    return SrtEntry(index=index, start_time=f"00:00:{index:02d},000", end_time=f"00:00:{index + 1:02d},000", text=text)
 
 
 class TestBuildContextText:
@@ -66,7 +66,6 @@ class TestTranslateSrt:
         last = chunks[-1]
         assert isinstance(last, SrtTranslationChunk)
         assert last.entries[0].text != "Hello"  # translated
-        assert last.error == ""
 
     def test_empty_text_preserved(self):
         entries = [_entry(1, ""), _entry(2, "Hello")]
@@ -107,4 +106,3 @@ class TestTranslateSrt:
         chunks = list(translate_srt(FakeTranslator(), entries, "en", "ja", context_size=0))
         last = chunks[-1]
         assert last.entries[0].text != "Hello"
-        assert last.error == ""

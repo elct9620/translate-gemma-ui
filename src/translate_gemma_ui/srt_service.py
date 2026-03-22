@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 class SrtTranslationChunk:
     entries: list[SrtEntry]
     progress: str
-    error: str = ""
 
 
 def build_context_text(entries: list[SrtEntry], target_idx: int, context_size: int) -> tuple[str, int]:

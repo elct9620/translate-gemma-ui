@@ -28,7 +28,7 @@ def parse_srt(content: str) -> list[SrtEntry]:
         try:
             index = int(lines[0].strip())
         except ValueError:
-            raise ValueError(f"無效的序號：{lines[0].strip()}")
+            raise ValueError(f"無效的序號：{lines[0].strip()}") from None
 
         if len(lines) < 2:
             raise ValueError(f"區塊 {index} 缺少時間軸")

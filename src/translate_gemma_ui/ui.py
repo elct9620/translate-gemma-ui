@@ -5,7 +5,7 @@ from pathlib import Path
 import gradio as gr
 
 from translate_gemma_ui.device import DeviceInfo
-from translate_gemma_ui.srt_parser import parse_srt, serialize_srt
+from translate_gemma_ui.srt_parser import SrtEntry, parse_srt, serialize_srt
 from translate_gemma_ui.srt_service import translate_srt
 from translate_gemma_ui.translate_service import translate_text
 from translate_gemma_ui.translator import Translator
@@ -62,7 +62,7 @@ def _make_srt_translate_fn(
     return translate
 
 
-def _write_srt_temp(entries: list, original_path: str) -> str:
+def _write_srt_temp(entries: list[SrtEntry], original_path: str) -> str:
     stem = Path(original_path).stem
     output_name = f"{stem}_translated.srt"
     output_path = Path(tempfile.gettempdir()) / output_name
