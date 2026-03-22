@@ -6,7 +6,7 @@ from translate_gemma_ui.srt_service import (
     translate_srt,
     translate_srt_full_file,
 )
-from translate_gemma_ui.translator import FakeTranslator
+from translate_gemma_ui.translator import FakeTranslator, OutOfMemoryError
 
 
 def _entry(index: int, text: str) -> SrtEntry:
@@ -199,3 +199,12 @@ class TestTranslateSrtFullFile:
         chunks = list(translate_srt_full_file(SrtEchoTranslator(), entries, "en", "ja"))
         last = chunks[-1]
         assert "翻譯完成" in last.progress
+
+    def test_oom_propagates_instead_of_being_swallowed(self):
+        class OOMTranslator(FakeTranslator):
+            def translate(self, text, source_lang, target_lang):
+                raise OutOfMemoryError("CUDA out of memory")
+
+        entries = [_entry(1, "Hello")]
+        with pytest.raises(OutOfMemoryError):
+            list(translate_srt_full_file(OOMTranslator(), entries, "en", "ja"))

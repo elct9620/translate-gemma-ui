@@ -1,5 +1,7 @@
+import pytest
+
 from translate_gemma_ui.translate_service import TranslationChunk, translate_text
-from translate_gemma_ui.translator import FakeTranslator
+from translate_gemma_ui.translator import FakeTranslator, OutOfMemoryError
 
 
 class TestTranslateTextGlossary:
@@ -66,3 +68,15 @@ class TestTranslateText:
         assert len(chunks) > 0
         failed_chunks = [c for c in chunks if "翻譯失敗" in c.progress]
         assert len(failed_chunks) > 0
+
+    def test_oom_propagates_instead_of_being_swallowed(self):
+        class OOMTranslator(FakeTranslator):
+            @property
+            def max_tokens(self) -> int:
+                return 5
+
+            def translate(self, text, source_lang, target_lang):
+                raise OutOfMemoryError("CUDA out of memory")
+
+        with pytest.raises(OutOfMemoryError):
+            list(translate_text(OOMTranslator(), "First sentence. Second sentence. Third sentence.", "en", "ja"))

@@ -176,6 +176,8 @@ def translate_srt_full_file(
     try:
         for chunk in translator.translate(srt_text, source_lang, target_lang):
             last_chunk = chunk
+    except OutOfMemoryError:
+        raise
     except Exception:
         logger.exception("整檔翻譯失敗")
         yield SrtTranslationChunk(entries=list(entries), progress="整檔翻譯失敗，建議改用批次模式")
