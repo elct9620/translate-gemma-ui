@@ -86,6 +86,10 @@
 
 - 系統提供基於瀏覽器的圖形介面
 - 預設使用 Gradio 框架
+- 系統在介面上顯示目前使用的運算裝置資訊：
+  - 裝置類型（如 NVIDIA RTX 4090、Apple M2 GPU、CPU）
+  - 可用 VRAM（GPU）或可用記憶體（CPU）
+- 使用 CPU 運算時，系統額外顯示提示：翻譯速度可能較慢
 
 Decided:
 - 預設前端框架：Gradio
@@ -113,6 +117,7 @@ To be decided:
 | HF_TOKEN | Hugging Face 平台的 API 存取權杖 |
 | 詞彙表 | CSV 格式的來源詞與目標詞對照表 |
 | 上下文窗口 | 翻譯單句字幕時，一併提供給模型的前後鄰近字幕 |
+| 運算裝置 | 執行模型推論的硬體，可為 GPU（含 VRAM）或 CPU（使用系統記憶體） |
 
 ## Environment
 
@@ -122,3 +127,11 @@ To be decided:
 | 作業系統 | macOS、Windows |
 | 套件管理 | uv（主要）、pip + requirements.txt（備選） |
 | 模型 | google/translategemma-4b-it（需 HF_TOKEN） |
+| 最低 GPU | NVIDIA GTX 3050（4GB VRAM） |
+| 無 GPU 時 | 系統退回 CPU 模式，功能不受限，速度較慢 |
+
+### 硬體適應
+
+- 系統以 4GB VRAM 的低階 GPU（如 GTX 3050）作為基準硬體目標
+- 在 VRAM 不足以載入完整模型時，系統自動採用降低記憶體用量的策略（如量化）使模型可運行
+- 無可用 GPU 時，系統自動退回 CPU 模式，所有功能維持可用
