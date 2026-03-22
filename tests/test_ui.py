@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import gradio as gr
 import pytest
 
@@ -79,14 +81,16 @@ class TestModelStatus:
 
 
 class TestLoadModelFn:
-    def test_load_failure_returns_error_message(self):
+    @patch("translate_gemma_ui.translator.TranslateGemmaTranslator", side_effect=RuntimeError("model not found"))
+    def test_load_failure_returns_error_message(self, _mock_cls):
         translator_ref = [FakeTranslator()]
         fn = _make_load_model_fn(translator_ref)
         result = fn("")
         assert "載入失敗" in result
         assert isinstance(translator_ref[0], FakeTranslator)
 
-    def test_load_with_empty_token_still_attempts(self):
+    @patch("translate_gemma_ui.translator.TranslateGemmaTranslator", side_effect=RuntimeError("model not found"))
+    def test_load_with_empty_token_still_attempts(self, _mock_cls):
         translator_ref = [FakeTranslator()]
         fn = _make_load_model_fn(translator_ref)
         result = fn("   ")

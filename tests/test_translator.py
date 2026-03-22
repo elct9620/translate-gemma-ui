@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock, patch
+
 from translate_gemma_ui.translator import FakeTranslator, Translator, _extract_languages_from_template
 
 
@@ -52,3 +54,24 @@ class TestFakeTranslator:
     def test_fake_translator_conforms_to_protocol(self):
         translator = FakeTranslator()
         assert isinstance(translator, Translator)
+
+
+class TestTranslateGemmaTranslatorInit:
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_from_pretrained_uses_dtype_not_torch_dtype(self, mock_processor_cls, mock_model_cls):
+        mock_processor = MagicMock()
+        mock_processor.chat_template = '"en": "English"'
+        mock_processor_cls.from_pretrained.return_value = mock_processor
+
+        mock_model = MagicMock()
+        mock_model.config.max_position_embeddings = 8192
+        mock_model_cls.from_pretrained.return_value = mock_model
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+
+        call_kwargs = mock_model_cls.from_pretrained.call_args.kwargs
+        assert "dtype" in call_kwargs, "Should use 'dtype' parameter (not 'torch_dtype')"
+        assert "torch_dtype" not in call_kwargs, "Should not use deprecated 'torch_dtype' parameter"

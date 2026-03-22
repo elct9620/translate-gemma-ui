@@ -59,7 +59,7 @@ class TranslateGemmaTranslator:
         self._model = AutoModelForImageTextToText.from_pretrained(
             model_id,
             device_map="auto",
-            torch_dtype=dtype,
+            dtype=dtype,
             token=token,
         )
         self._max_tokens = getattr(self._model.config, "max_position_embeddings", 8192)
