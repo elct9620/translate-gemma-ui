@@ -201,19 +201,19 @@ class TestSrtTranslateFn:
     def test_no_file_raises_error(self):
         fn = _make_srt_translate_fn([FakeTranslator()])
         with pytest.raises(gr.Error, match="上傳"):
-            list(fn(None, "en", "ja", 3))
+            list(fn(None, "en", "ja", "batch", 1))
 
     def test_invalid_srt_raises_error(self, tmp_path):
         path = self._write_srt(tmp_path, "not a valid srt")
         fn = _make_srt_translate_fn([FakeTranslator()])
         with pytest.raises(gr.Error, match="格式"):
-            list(fn(path, "en", "ja", 3))
+            list(fn(path, "en", "ja", "batch", 1))
 
     def test_same_language_raises_error(self, tmp_path):
         path = self._write_srt(tmp_path, "1\n00:00:01,000 --> 00:00:02,000\nHello\n")
         fn = _make_srt_translate_fn([FakeTranslator()])
         with pytest.raises(gr.Error, match="相同"):
-            list(fn(path, "en", "en", 3))
+            list(fn(path, "en", "en", "batch", 1))
 
     def test_model_not_ready_raises_error(self, tmp_path):
         class NotReadyTranslator(FakeTranslator):
@@ -224,14 +224,33 @@ class TestSrtTranslateFn:
         path = self._write_srt(tmp_path, "1\n00:00:01,000 --> 00:00:02,000\nHello\n")
         fn = _make_srt_translate_fn([NotReadyTranslator()])
         with pytest.raises(gr.Error, match="載入"):
-            list(fn(path, "en", "ja", 3))
+            list(fn(path, "en", "ja", "batch", 1))
 
     def test_valid_srt_produces_output(self, tmp_path):
         path = self._write_srt(tmp_path, "1\n00:00:01,000 --> 00:00:02,000\nHello\n")
         fn = _make_srt_translate_fn([FakeTranslator()])
-        results = list(fn(path, "en", "ja", 0))
+        results = list(fn(path, "en", "ja", "batch", 1))
         assert len(results) > 0
-        progress, output_file = results[-1]
+        progress, preview, output_file = results[-1]
         assert output_file is not None
         assert output_file.endswith(".srt")
         assert "翻譯完成" in progress
+
+    def test_srt_preview_contains_timestamps(self, tmp_path):
+        path = self._write_srt(tmp_path, "1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+        fn = _make_srt_translate_fn([FakeTranslator()])
+        results = list(fn(path, "en", "ja", "batch", 1))
+        _progress, preview, _file = results[-1]
+        assert "00:00:01,000 --> 00:00:02,000" in preview
+
+    def test_full_file_mode(self, tmp_path):
+        class SrtEchoTranslator(FakeTranslator):
+            def translate(self, text, source_lang, target_lang):
+                yield "1\n00:00:01,000 --> 00:00:02,000\nTranslated\n"
+
+        path = self._write_srt(tmp_path, "1\n00:00:01,000 --> 00:00:02,000\nHello\n")
+        fn = _make_srt_translate_fn([SrtEchoTranslator()])
+        results = list(fn(path, "en", "ja", "full", 1))
+        assert len(results) > 0
+        _progress, preview, _file = results[-1]
+        assert "Translated" in preview

@@ -8,7 +8,7 @@ import gradio as gr
 from translate_gemma_ui.device import DeviceInfo
 from translate_gemma_ui.glossary import parse_glossary
 from translate_gemma_ui.srt_parser import SrtEntry, parse_srt, serialize_srt
-from translate_gemma_ui.srt_service import translate_srt
+from translate_gemma_ui.srt_service import translate_srt, translate_srt_full_file
 from translate_gemma_ui.translate_service import translate_text
 from translate_gemma_ui.translator import Translator
 
@@ -72,14 +72,16 @@ def _make_translate_fn(
 
 def _make_srt_translate_fn(
     translator_ref: list[Translator],
-) -> Callable[..., Iterator[tuple[str, str | None]]]:
+) -> Callable[..., Iterator[tuple[str, str, str | None]]]:
     def translate(
         file_path: str | None,
         source_lang: str,
         target_lang: str,
+        mode: str = "batch",
+        batch_size: int = 1,
         glossary_path: str | None = None,
         glossary_mode: str = "pre",
-    ) -> Iterator[tuple[str, str | None]]:
+    ) -> Iterator[tuple[str, str, str | None]]:
         translator = translator_ref[0]
         if not translator.is_ready:
             raise gr.Error("模型載入中，請稍候")
@@ -95,12 +97,29 @@ def _make_srt_translate_fn(
             raise gr.Error(f"SRT 格式錯誤：{e}")
 
         glossary = _parse_glossary_file(glossary_path)
-        output_path = None
-        for chunk in translate_srt(
-            translator, entries, source_lang, target_lang, glossary=glossary, glossary_mode=glossary_mode
-        ):
-            output_path = _write_srt_temp(chunk.entries, file_path)
-            yield chunk.progress, output_path
+
+        if mode == "full":
+            try:
+                chunks = translate_srt_full_file(
+                    translator, entries, source_lang, target_lang, glossary=glossary, glossary_mode=glossary_mode
+                )
+            except ValueError as e:
+                raise gr.Error(str(e))
+            for chunk in chunks:
+                output_path = _write_srt_temp(chunk.entries, file_path)
+                yield chunk.progress, serialize_srt(chunk.entries), output_path
+        else:
+            for chunk in translate_srt(
+                translator,
+                entries,
+                source_lang,
+                target_lang,
+                batch_size=int(batch_size),
+                glossary=glossary,
+                glossary_mode=glossary_mode,
+            ):
+                output_path = _write_srt_temp(chunk.entries, file_path)
+                yield chunk.progress, serialize_srt(chunk.entries), output_path
 
     return translate
 
@@ -168,15 +187,24 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
                 filterable=True,
             )
 
+        srt_mode_choices = [("整檔模式", "full"), ("批次模式", "batch")]
+
         with gr.Tabs():
             with gr.TabItem("文字翻譯"):
-                input_text = gr.Textbox(label="輸入文字", lines=8, placeholder="請輸入要翻譯的文字...")
                 with gr.Row():
-                    text_glossary = gr.File(file_types=[".csv"], type="filepath", label="詞彙表（選填）")
-                    text_glossary_mode = gr.Radio(choices=GLOSSARY_MODE_CHOICES, value="pre", label="詞彙替換方式")
-                translate_btn = gr.Button("翻譯", variant="primary")
-                output_text = gr.Textbox(label="翻譯結果", lines=8, interactive=False)
-                progress_text = gr.Markdown("")
+                    with gr.Column():
+                        input_text = gr.Textbox(label="輸入文字", lines=8, placeholder="請輸入要翻譯的文字...")
+                        with gr.Row():
+                            text_glossary = gr.File(
+                                file_types=[".csv"], type="filepath", label="詞彙表（選填）"
+                            )
+                            text_glossary_mode = gr.Radio(
+                                choices=GLOSSARY_MODE_CHOICES, value="pre", label="詞彙替換方式"
+                            )
+                        translate_btn = gr.Button("翻譯", variant="primary")
+                    with gr.Column():
+                        output_text = gr.Textbox(label="翻譯結果", lines=8, interactive=False)
+                        progress_text = gr.Markdown("")
 
                 translate_btn.click(
                     fn=_make_translate_fn(translator_ref),
@@ -186,18 +214,36 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
                 )
 
             with gr.TabItem("SRT 字幕翻譯"):
-                srt_file = gr.File(file_types=[".srt"], type="filepath", label="上傳 SRT 檔案")
                 with gr.Row():
-                    srt_glossary = gr.File(file_types=[".csv"], type="filepath", label="詞彙表（選填）")
-                    srt_glossary_mode = gr.Radio(choices=GLOSSARY_MODE_CHOICES, value="pre", label="詞彙替換方式")
-                srt_translate_btn = gr.Button("翻譯字幕", variant="primary")
-                srt_progress = gr.Markdown("")
-                srt_output_file = gr.File(label="下載翻譯結果", interactive=False)
+                    with gr.Column():
+                        srt_file = gr.File(file_types=[".srt"], type="filepath", label="上傳 SRT 檔案")
+                        srt_mode = gr.Radio(choices=srt_mode_choices, value="batch", label="翻譯模式")
+                        srt_batch_size = gr.Number(value=1, minimum=1, label="每批字幕數 (N)", precision=0)
+                        with gr.Row():
+                            srt_glossary = gr.File(
+                                file_types=[".csv"], type="filepath", label="詞彙表（選填）"
+                            )
+                            srt_glossary_mode = gr.Radio(
+                                choices=GLOSSARY_MODE_CHOICES, value="pre", label="詞彙替換方式"
+                            )
+                        srt_translate_btn = gr.Button("翻譯字幕", variant="primary")
+                    with gr.Column():
+                        srt_preview = gr.Textbox(label="翻譯預覽", lines=20, interactive=False)
+                        srt_progress = gr.Markdown("")
+                        srt_output_file = gr.File(label="下載翻譯結果", interactive=False)
 
                 srt_translate_btn.click(
                     fn=_make_srt_translate_fn(translator_ref),
-                    inputs=[srt_file, source_lang, target_lang, srt_glossary, srt_glossary_mode],
-                    outputs=[srt_progress, srt_output_file],
+                    inputs=[
+                        srt_file,
+                        source_lang,
+                        target_lang,
+                        srt_mode,
+                        srt_batch_size,
+                        srt_glossary,
+                        srt_glossary_mode,
+                    ],
+                    outputs=[srt_progress, srt_preview, srt_output_file],
                     show_progress="full",
                 )
 
