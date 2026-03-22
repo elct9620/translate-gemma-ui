@@ -122,6 +122,7 @@ class TranslateGemmaTranslator:
     def _tokenize_inputs(self, text: str, source_lang: str, target_lang: str, context: TranslationContext | None):
         effective_context = context if context is not None else TranslationContext(previous=[], following=[])
         prompt = self._build_context_prompt(text, source_lang, target_lang, effective_context)
+        logger.debug("Chat template prompt:\n%s", prompt)
         return self._processor.tokenizer(prompt, return_tensors="pt", add_special_tokens=True).to(self._model.device)
 
     def translate(
