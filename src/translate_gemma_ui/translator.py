@@ -8,6 +8,14 @@ logger = logging.getLogger(__name__)
 _QUANTIZATION_VRAM_THRESHOLD = 8 * 1024**3  # 8 GB
 
 
+def _is_model_cached(model_id: str) -> bool:
+    """Check if a HuggingFace model is available in the local cache."""
+    from huggingface_hub import try_to_load_from_cache
+
+    result = try_to_load_from_cache(model_id, "config.json")
+    return isinstance(result, str)
+
+
 class OutOfMemoryError(RuntimeError):
     """Raised when GPU runs out of memory during model inference."""
 
@@ -77,7 +85,14 @@ class TranslateGemmaTranslator:
         logger.info("Loading model %s...", model_id)
 
         self._model_name = model_id
-        self._processor = AutoProcessor.from_pretrained(model_id, token=token)
+        cached = _is_model_cached(model_id)
+        if cached:
+            logger.info("Model found in local cache, loading offline")
+
+        resolved_token = None if cached else token
+        self._processor = AutoProcessor.from_pretrained(
+            model_id, token=resolved_token, local_files_only=cached
+        )
         self._languages = SUPPORTED_LANGUAGES
 
         dtype = torch.bfloat16 if torch.cuda.is_available() or torch.backends.mps.is_available() else torch.float32
@@ -100,7 +115,7 @@ class TranslateGemmaTranslator:
             except ImportError:
                 logger.warning("bitsandbytes not installed; loading without quantization (may OOM)")
 
-        load_kwargs: dict = {"device_map": "auto", "token": token}
+        load_kwargs: dict = {"device_map": "auto", "token": resolved_token, "local_files_only": cached}
         if quantization_config is not None:
             load_kwargs["quantization_config"] = quantization_config
         else:

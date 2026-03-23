@@ -5,6 +5,7 @@ from translate_gemma_ui.translator import (
     FakeTranslator,
     OutOfMemoryError,
     Translator,
+    _is_model_cached,
 )
 
 
@@ -191,6 +192,58 @@ class TestTranslateGemmaQuantization:
     def test_fake_translator_is_not_quantized(self):
         translator = FakeTranslator()
         assert translator.is_quantized is False
+
+
+class TestIsModelCached:
+    @patch("huggingface_hub.try_to_load_from_cache", return_value="/path/to/config.json")
+    def test_returns_true_when_cached(self, _mock):
+        assert _is_model_cached("some/model") is True
+
+    @patch("huggingface_hub.try_to_load_from_cache", return_value=None)
+    def test_returns_false_when_not_cached(self, _mock):
+        assert _is_model_cached("some/model") is False
+
+
+class TestTranslateGemmaCacheDetection:
+    """Tests that cached models load with local_files_only=True and no token."""
+
+    @patch("translate_gemma_ui.translator._is_model_cached", return_value=True)
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_uses_local_files_only_when_cached(self, mock_processor_cls, mock_model_cls, _mock_cached):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        TranslateGemmaTranslator(model_id="test-model", token="should-be-ignored")
+
+        processor_kwargs = mock_processor_cls.from_pretrained.call_args
+        assert processor_kwargs[1]["local_files_only"] is True
+        assert processor_kwargs[1]["token"] is None
+
+        model_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert model_kwargs["local_files_only"] is True
+        assert model_kwargs["token"] is None
+
+    @patch("translate_gemma_ui.translator._is_model_cached", return_value=False)
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_uses_token_when_not_cached(self, mock_processor_cls, mock_model_cls, _mock_cached):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        TranslateGemmaTranslator(model_id="test-model", token="my-token")
+
+        processor_kwargs = mock_processor_cls.from_pretrained.call_args
+        assert processor_kwargs[1]["token"] == "my-token"
+        assert processor_kwargs[1]["local_files_only"] is False
+
+        model_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert model_kwargs["token"] == "my-token"
+        assert model_kwargs["local_files_only"] is False
 
 
 class TestOutOfMemoryError:
