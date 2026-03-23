@@ -68,6 +68,13 @@ class TestParseSrt:
         entries = parse_srt(content)
         assert len(entries) == 1
 
+    def test_utf8_bom_stripped(self):
+        content = "\ufeff1\n00:00:01,000 --> 00:00:02,000\nHello\n"
+        entries = parse_srt(content)
+        assert len(entries) == 1
+        assert entries[0].index == 1
+        assert entries[0].text == "Hello"
+
 
 class TestSerializeSrt:
     def test_empty_list(self):

@@ -13,6 +13,7 @@ class SrtEntry:
 
 
 def parse_srt(content: str) -> list[SrtEntry]:
+    content = content.removeprefix("\ufeff")
     content = content.replace("\r\n", "\n")
     if not content.strip():
         raise ValueError("SRT 檔案內容為空")
