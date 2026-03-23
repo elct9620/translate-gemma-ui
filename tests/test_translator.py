@@ -61,12 +61,13 @@ class TestFakeTranslator:
         assert isinstance(translator, Translator)
 
 
+@patch("translate_gemma_ui.translator._is_model_cached", return_value=False)
 class TestTranslateGemmaTranslatorInit:
     """Tests for TranslateGemmaTranslator initialization behavior."""
 
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_init_uses_supported_languages(self, mock_processor_cls, mock_model_cls):
+    def test_init_uses_supported_languages(self, mock_processor_cls, mock_model_cls, _mock_cached):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -77,7 +78,7 @@ class TestTranslateGemmaTranslatorInit:
 
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_init_sets_max_tokens_from_config(self, mock_processor_cls, mock_model_cls):
+    def test_init_sets_max_tokens_from_config(self, mock_processor_cls, mock_model_cls, _mock_cached):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model = MagicMock()
         mock_model.config.max_position_embeddings = 4096
@@ -90,7 +91,7 @@ class TestTranslateGemmaTranslatorInit:
 
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_init_reports_ready(self, mock_processor_cls, mock_model_cls):
+    def test_init_reports_ready(self, mock_processor_cls, mock_model_cls, _mock_cached):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -100,13 +101,16 @@ class TestTranslateGemmaTranslatorInit:
         assert translator.is_ready is True
 
 
+@patch("translate_gemma_ui.translator._is_model_cached", return_value=False)
 class TestTranslateGemmaQuantization:
     """Tests for automatic 4-bit quantization when VRAM is insufficient."""
 
     @patch("transformers.BitsAndBytesConfig")
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_reports_quantized_when_vram_below_threshold(self, mock_processor_cls, mock_model_cls, mock_bnb_config):
+    def test_reports_quantized_when_vram_below_threshold(
+        self, mock_processor_cls, mock_model_cls, mock_bnb_config, _mock_cached
+    ):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
         mock_bnb_config.return_value = MagicMock()
@@ -121,7 +125,7 @@ class TestTranslateGemmaQuantization:
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
     def test_passes_quantization_config_when_vram_below_threshold(
-        self, mock_processor_cls, mock_model_cls, mock_bnb_config
+        self, mock_processor_cls, mock_model_cls, mock_bnb_config, _mock_cached
     ):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
@@ -137,7 +141,7 @@ class TestTranslateGemmaQuantization:
 
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_no_quantization_when_vram_sufficient(self, mock_processor_cls, mock_model_cls):
+    def test_no_quantization_when_vram_sufficient(self, mock_processor_cls, mock_model_cls, _mock_cached):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -152,7 +156,7 @@ class TestTranslateGemmaQuantization:
 
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_no_quantization_when_vram_equals_threshold(self, mock_processor_cls, mock_model_cls):
+    def test_no_quantization_when_vram_equals_threshold(self, mock_processor_cls, mock_model_cls, _mock_cached):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -164,7 +168,7 @@ class TestTranslateGemmaQuantization:
 
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_no_quantization_when_vram_bytes_is_none(self, mock_processor_cls, mock_model_cls):
+    def test_no_quantization_when_vram_bytes_is_none(self, mock_processor_cls, mock_model_cls, _mock_cached):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -177,7 +181,7 @@ class TestTranslateGemmaQuantization:
     @patch("transformers.BitsAndBytesConfig", side_effect=ImportError("No module named 'bitsandbytes'"))
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_fallback_when_bitsandbytes_missing(self, mock_processor_cls, mock_model_cls, _mock_bnb):
+    def test_fallback_when_bitsandbytes_missing(self, mock_processor_cls, mock_model_cls, _mock_bnb, _mock_cached):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
 
@@ -189,7 +193,7 @@ class TestTranslateGemmaQuantization:
         call_kwargs = mock_model_cls.from_pretrained.call_args[1]
         assert "dtype" in call_kwargs
 
-    def test_fake_translator_is_not_quantized(self):
+    def test_fake_translator_is_not_quantized(self, _mock_cached):
         translator = FakeTranslator()
         assert translator.is_quantized is False
 
