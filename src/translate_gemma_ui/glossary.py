@@ -15,7 +15,7 @@ def _has_non_latin(text: str) -> bool:
 
 def parse_glossary(content: str) -> list[tuple[str, str]]:
     """Parse CSV glossary content into (source, target) pairs."""
-    content = content.lstrip("\ufeff")
+    content = content.removeprefix("\ufeff")
     entries: list[tuple[str, str]] = []
 
     reader = csv.reader(io.StringIO(content))
