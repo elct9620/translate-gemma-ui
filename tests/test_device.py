@@ -8,7 +8,7 @@ from translate_gemma_ui.device import DeviceInfo, get_device_info
 
 
 def test_cuda_device_detection():
-    props = SimpleNamespace(total_mem=8 * 1024**3)
+    props = SimpleNamespace(total_memory=8 * 1024**3)
     with (
         patch("translate_gemma_ui.device.torch") as mock_torch,
     ):
@@ -24,7 +24,7 @@ def test_cuda_device_detection():
 
 
 def test_cuda_device_has_vram_bytes():
-    props = SimpleNamespace(total_mem=4 * 1024**3)
+    props = SimpleNamespace(total_memory=4 * 1024**3)
     with (
         patch("translate_gemma_ui.device.torch") as mock_torch,
     ):

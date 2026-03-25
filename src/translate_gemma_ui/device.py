@@ -38,9 +38,9 @@ def get_device_info() -> DeviceInfo:
         props = torch.cuda.get_device_properties(0)
         return DeviceInfo(
             device_name=torch.cuda.get_device_name(0),
-            memory_info=_format_memory(props.total_mem, "VRAM"),
+            memory_info=_format_memory(props.total_memory, "VRAM"),
             is_cpu=False,
-            vram_bytes=props.total_mem,
+            vram_bytes=props.total_memory,
         )
 
     if torch.backends.mps.is_available():
