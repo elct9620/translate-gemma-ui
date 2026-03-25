@@ -1,4 +1,5 @@
 import logging
+import os
 from collections.abc import Iterator
 from threading import Thread
 from typing import Protocol, runtime_checkable
@@ -90,41 +91,53 @@ class TranslateGemmaTranslator:
             logger.info("Model found in local cache, loading offline")
 
         resolved_token = None if cached else token
-        self._processor = AutoProcessor.from_pretrained(
-            model_id, token=resolved_token, local_files_only=cached
-        )
-        self._languages = SUPPORTED_LANGUAGES
 
-        dtype = torch.bfloat16 if torch.cuda.is_available() or torch.backends.mps.is_available() else torch.float32
+        prev_offline = os.environ.get("HF_HUB_OFFLINE")
+        if cached:
+            os.environ["HF_HUB_OFFLINE"] = "1"
 
-        quantization_config = None
-        self._is_quantized = False
+        try:
+            self._processor = AutoProcessor.from_pretrained(
+                model_id, token=resolved_token, local_files_only=cached
+            )
+            self._languages = SUPPORTED_LANGUAGES
 
-        if vram_bytes is not None and vram_bytes < _QUANTIZATION_VRAM_THRESHOLD:
-            try:
-                from transformers import BitsAndBytesConfig
+            dtype = torch.bfloat16 if torch.cuda.is_available() or torch.backends.mps.is_available() else torch.float32
 
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=torch.bfloat16,
-                    bnb_4bit_use_double_quant=True,
-                )
-                self._is_quantized = True
-                logger.info("VRAM (%.2f GB) below threshold; enabling 4-bit quantization", vram_bytes / (1024**3))
-            except ImportError:
-                logger.warning("bitsandbytes not installed; loading without quantization (may OOM)")
+            quantization_config = None
+            self._is_quantized = False
 
-        load_kwargs: dict = {"device_map": "auto", "token": resolved_token, "local_files_only": cached}
-        if quantization_config is not None:
-            load_kwargs["quantization_config"] = quantization_config
-        else:
-            load_kwargs["dtype"] = dtype
+            if vram_bytes is not None and vram_bytes < _QUANTIZATION_VRAM_THRESHOLD:
+                try:
+                    from transformers import BitsAndBytesConfig
 
-        self._model = AutoModelForImageTextToText.from_pretrained(model_id, **load_kwargs)
-        self._max_tokens = getattr(self._model.config, "max_position_embeddings", 8192)
-        self._is_ready = True
-        logger.info("Model loaded successfully on %s", self._model.device)
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_quant_type="nf4",
+                        bnb_4bit_compute_dtype=torch.bfloat16,
+                        bnb_4bit_use_double_quant=True,
+                    )
+                    self._is_quantized = True
+                    logger.info("VRAM (%.2f GB) below threshold; enabling 4-bit quantization", vram_bytes / (1024**3))
+                except ImportError:
+                    logger.warning("bitsandbytes not installed; loading without quantization (may OOM)")
+
+            load_kwargs: dict = {"device_map": "auto", "token": resolved_token, "local_files_only": cached}
+            if quantization_config is not None:
+                load_kwargs["quantization_config"] = quantization_config
+            else:
+                load_kwargs["dtype"] = dtype
+
+            self._model = AutoModelForImageTextToText.from_pretrained(model_id, **load_kwargs)
+            self._max_tokens = getattr(self._model.config, "max_position_embeddings", 8192)
+            self._is_ready = True
+            logger.info("Model loaded successfully on %s", self._model.device)
+        finally:
+            if cached:
+                if prev_offline is None:
+                    os.environ.pop("HF_HUB_OFFLINE", None)
+                else:
+                    os.environ["HF_HUB_OFFLINE"] = prev_offline
 
     @property
     def languages(self) -> dict[str, str]:
