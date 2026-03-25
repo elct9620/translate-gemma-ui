@@ -31,7 +31,7 @@ uv add <package>
 uv add --group dev <package>
 
 # Export requirements.txt for non-engineer users (pip fallback)
-uv export --no-dev --output-file requirements.txt
+uv export --no-dev --no-sources --output-file requirements.txt
 ```
 
 ## Architecture
@@ -48,5 +48,5 @@ Key dependencies: Gradio (UI), PyTorch (inference), Transformers (model loading)
 - Python >= 3.12, use modern syntax (type unions with `|`, etc.)
 - Ruff for linting and formatting (line-length 120, rules: E, F, I, UP)
 - Package manager: uv (not pip directly); must also provide `requirements.txt` as a pip fallback for non-engineer end users
-- When dependencies change, run `uv export --no-dev --output-file requirements.txt` to keep the export in sync
+- When dependencies change, run `uv export --no-dev --no-sources --output-file requirements.txt` to keep the export in sync
 - Conventional commits in commit messages
