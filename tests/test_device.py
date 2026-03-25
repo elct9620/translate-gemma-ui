@@ -1,3 +1,4 @@
+import logging
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -124,3 +125,37 @@ def test_system_memory_windows_fallback():
     ):
         result = _get_system_memory_bytes()
         assert result == 16 * 1024 * 1024 * 1024
+
+
+def test_windows_cpu_fallback_logs_cuda_install_hint(caplog):
+    system_mem = 16 * 1024**3
+    with (
+        patch("translate_gemma_ui.device.torch") as mock_torch,
+        patch("translate_gemma_ui.device._get_system_memory_bytes", return_value=system_mem),
+        patch("translate_gemma_ui.device.sys") as mock_sys,
+    ):
+        mock_torch.cuda.is_available.return_value = False
+        mock_torch.backends.mps.is_available.return_value = False
+        mock_sys.platform = "win32"
+
+        with caplog.at_level(logging.WARNING, logger="translate_gemma_ui.device"):
+            get_device_info()
+
+    assert any("CUDA" in record.message for record in caplog.records)
+
+
+def test_non_windows_cpu_fallback_no_cuda_hint(caplog):
+    system_mem = 16 * 1024**3
+    with (
+        patch("translate_gemma_ui.device.torch") as mock_torch,
+        patch("translate_gemma_ui.device._get_system_memory_bytes", return_value=system_mem),
+        patch("translate_gemma_ui.device.sys") as mock_sys,
+    ):
+        mock_torch.cuda.is_available.return_value = False
+        mock_torch.backends.mps.is_available.return_value = False
+        mock_sys.platform = "darwin"
+
+        with caplog.at_level(logging.WARNING, logger="translate_gemma_ui.device"):
+            get_device_info()
+
+    assert not any("CUDA" in record.message for record in caplog.records)

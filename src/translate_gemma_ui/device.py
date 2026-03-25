@@ -1,7 +1,11 @@
+import logging
 import os
+import sys
 from dataclasses import dataclass
 
 import torch
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,14 @@ def get_device_info() -> DeviceInfo:
             device_name="Apple Silicon GPU",
             memory_info=_format_memory(_get_system_memory_bytes(), "RAM"),
             is_cpu=False,
+        )
+
+    if sys.platform == "win32":
+        logger.warning(
+            "偵測到 Windows 系統但 CUDA 無法使用。"
+            "您可能安裝了 CPU 版本的 PyTorch。"
+            "請使用 start.bat 啟動程式以自動修復，"
+            "或執行: pip install torch --extra-index-url https://download.pytorch.org/whl/cu128"
         )
 
     return DeviceInfo(
