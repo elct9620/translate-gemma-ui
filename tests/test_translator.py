@@ -257,9 +257,10 @@ class TestOfflineEnvironmentVariable:
     @patch("translate_gemma_ui.translator._is_model_cached", return_value=True)
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_sets_hf_hub_offline_when_cached(self, mock_processor_cls, mock_model_cls, _mock_cached):
+    def test_sets_hf_hub_offline_when_cached(self, mock_processor_cls, mock_model_cls, _mock_cached, monkeypatch):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
+        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
 
         captured = {}
 
@@ -278,11 +279,12 @@ class TestOfflineEnvironmentVariable:
     @patch("translate_gemma_ui.translator._is_model_cached", return_value=True)
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_restores_hf_hub_offline_after_cached_load(self, mock_processor_cls, mock_model_cls, _mock_cached):
+    def test_restores_hf_hub_offline_after_cached_load(
+        self, mock_processor_cls, mock_model_cls, _mock_cached, monkeypatch
+    ):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
-
-        os.environ.pop("HF_HUB_OFFLINE", None)
+        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
 
         from translate_gemma_ui.translator import TranslateGemmaTranslator
 
@@ -293,25 +295,28 @@ class TestOfflineEnvironmentVariable:
     @patch("translate_gemma_ui.translator._is_model_cached", return_value=True)
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_restores_previous_hf_hub_offline_value(self, mock_processor_cls, mock_model_cls, _mock_cached):
+    def test_restores_previous_hf_hub_offline_value(
+        self, mock_processor_cls, mock_model_cls, _mock_cached, monkeypatch
+    ):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
-
-        os.environ["HF_HUB_OFFLINE"] = "0"
+        monkeypatch.setenv("HF_HUB_OFFLINE", "0")
 
         from translate_gemma_ui.translator import TranslateGemmaTranslator
 
         TranslateGemmaTranslator(model_id="test-model", token="ignored")
 
         assert os.environ.get("HF_HUB_OFFLINE") == "0"
-        os.environ.pop("HF_HUB_OFFLINE", None)
 
     @patch("translate_gemma_ui.translator._is_model_cached", return_value=False)
     @patch("transformers.AutoModelForImageTextToText")
     @patch("transformers.AutoProcessor")
-    def test_does_not_set_hf_hub_offline_when_not_cached(self, mock_processor_cls, mock_model_cls, _mock_cached):
+    def test_does_not_set_hf_hub_offline_when_not_cached(
+        self, mock_processor_cls, mock_model_cls, _mock_cached, monkeypatch
+    ):
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_model_cls.from_pretrained.return_value = MagicMock()
+        monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
 
         captured = {}
 
@@ -320,7 +325,6 @@ class TestOfflineEnvironmentVariable:
             return MagicMock()
 
         mock_processor_cls.from_pretrained.side_effect = capture_env
-        os.environ.pop("HF_HUB_OFFLINE", None)
 
         from translate_gemma_ui.translator import TranslateGemmaTranslator
 
