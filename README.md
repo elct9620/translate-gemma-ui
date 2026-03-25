@@ -43,6 +43,14 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+> **Windows GPU 使用者：** 上述指令安裝的 PyTorch 預設為 CPU 版本。若您有 NVIDIA 顯示卡，請改用以下指令安裝以啟用 GPU 加速：
+>
+> ```bash
+> pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu128
+> ```
+>
+> 或使用 `start.bat` 啟動程式，它會自動偵測並提示修復。
+
 > **Windows 使用者提示：** 如果尚未安裝 Python，請從 [python.org](https://www.python.org/downloads/) 下載安裝，安裝時請勾選「Add Python to PATH」。
 
 ### 方法二：使用 uv（推薦給開發者）
