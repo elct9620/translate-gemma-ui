@@ -250,7 +250,6 @@ class TestTranslateGemmaCacheDetection:
         assert model_kwargs["local_files_only"] is False
 
 
-
 class TestOutOfMemoryError:
     def test_is_runtime_error_subclass(self):
         assert issubclass(OutOfMemoryError, RuntimeError)
