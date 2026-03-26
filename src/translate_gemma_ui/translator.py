@@ -43,7 +43,9 @@ def _is_oom_error(exc: BaseException) -> bool:
     except ImportError:
         pass
     msg = str(exc).lower()
-    return isinstance(exc, RuntimeError) and ("out of memory" in msg or "dispatched on the cpu or the disk" in msg)
+    if isinstance(exc, RuntimeError) and "out of memory" in msg:
+        return True
+    return isinstance(exc, (RuntimeError, ValueError)) and "dispatched on the cpu or the disk" in msg
 
 
 def _classify_load_error(exc: Exception) -> ModelLoadError:
@@ -178,7 +180,7 @@ class TranslateGemmaTranslator:
 
         try:
             self._model = AutoModelForImageTextToText.from_pretrained(model_id, **load_kwargs)
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
             if not force_cpu and _is_oom_error(exc):
                 logger.warning("GPU cannot fit model; falling back to CPU mode (float32)")
                 self._is_quantized = False

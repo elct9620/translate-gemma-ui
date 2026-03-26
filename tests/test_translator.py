@@ -206,9 +206,10 @@ class TestTranslateGemmaQuantization:
         mock_processor_cls.from_pretrained.return_value = MagicMock()
         mock_bnb_config.return_value = MagicMock()
 
-        # First call (GPU quantized) raises dispatch error, second call (CPU fallback) succeeds
+        # First call (GPU quantized) raises dispatch error (ValueError from bnb quantizer),
+        # second call (CPU fallback) succeeds
         mock_model_cls.from_pretrained.side_effect = [
-            RuntimeError(
+            ValueError(
                 "Some modules are dispatched on the CPU or the disk. "
                 "Make sure you have enough GPU RAM to fit the quantized model."
             ),
@@ -439,7 +440,15 @@ class TestClassifyLoadError:
         result = _classify_load_error(exc)
         assert result.error_type == "out_of_memory"
 
-    def test_classifies_cpu_dispatch_error_as_out_of_memory(self):
+    def test_classifies_cpu_dispatch_value_error_as_out_of_memory(self):
+        exc = ValueError(
+            "Some modules are dispatched on the CPU or the disk. "
+            "Make sure you have enough GPU RAM to fit the quantized model."
+        )
+        result = _classify_load_error(exc)
+        assert result.error_type == "out_of_memory"
+
+    def test_classifies_cpu_dispatch_runtime_error_as_out_of_memory(self):
         exc = RuntimeError(
             "Some modules are dispatched on the CPU or the disk. "
             "Make sure you have enough GPU RAM to fit the quantized model."
