@@ -152,12 +152,13 @@ def test_force_cpu_via_env_var():
         patch.dict("os.environ", {"DEVICE": "cpu"}),
     ):
         mock_torch.cuda.is_available.return_value = True
+        mock_torch.backends.mps.is_available.return_value = False
 
         info = get_device_info()
 
     assert info.is_cpu is True
     assert info.device_name == "CPU"
-    mock_torch.cuda.is_available.assert_not_called()
+    assert info.forced_cpu is True
 
 
 def test_force_cpu_env_var_case_insensitive():
@@ -168,10 +169,27 @@ def test_force_cpu_env_var_case_insensitive():
         patch.dict("os.environ", {"DEVICE": "CPU"}),
     ):
         mock_torch.cuda.is_available.return_value = True
+        mock_torch.backends.mps.is_available.return_value = False
 
         info = get_device_info()
 
     assert info.is_cpu is True
+
+
+def test_force_cpu_no_gpu_sets_forced_cpu_false():
+    system_mem = 32 * 1024**3
+    with (
+        patch("translate_gemma_ui.device.torch") as mock_torch,
+        patch("translate_gemma_ui.device._get_system_memory_bytes", return_value=system_mem),
+        patch.dict("os.environ", {"DEVICE": "cpu"}),
+    ):
+        mock_torch.cuda.is_available.return_value = False
+        mock_torch.backends.mps.is_available.return_value = False
+
+        info = get_device_info()
+
+    assert info.is_cpu is True
+    assert info.forced_cpu is False
 
 
 def test_device_env_var_non_cpu_does_not_override():

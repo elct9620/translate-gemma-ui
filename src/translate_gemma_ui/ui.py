@@ -15,16 +15,7 @@ from translate_gemma_ui.translator import OutOfMemoryError, Translator
 logger = logging.getLogger(__name__)
 
 GLOSSARY_MODE_CHOICES = [("翻譯前替換", "pre"), ("翻譯後替換", "post")]
-
-
-def _is_gpu_hardware_available() -> bool:
-    """Check if GPU hardware is present, ignoring DEVICE env var override."""
-    try:
-        import torch
-
-        return torch.cuda.is_available() or torch.backends.mps.is_available()
-    except ImportError:
-        return False
+OOM_USER_MESSAGE = "記憶體不足。請展開「模型設定」，將裝置切換為 CPU 模式，然後點擊「載入模型」重試。"
 
 
 def _parse_glossary_file(file_path: str | None) -> list[tuple[str, str]] | None:
@@ -84,7 +75,7 @@ def _make_translate_fn(
         except OutOfMemoryError:
             yield (
                 "",
-                "⚠️ 記憶體不足。請展開「模型設定」，將裝置切換為 CPU 模式，然後點擊「載入模型」重試。",
+                f"⚠️ {OOM_USER_MESSAGE}",
                 gr.update(visible=True),
             )
         except Exception:
@@ -146,7 +137,7 @@ def _make_srt_translate_fn(
                     output_path = _write_srt_temp(chunk.entries, file_path)
                     yield chunk.progress, serialize_srt(chunk.entries), output_path
         except OutOfMemoryError:
-            raise gr.Error("記憶體不足。請展開「模型設定」，將裝置切換為 CPU 模式，然後點擊「載入模型」重試。")
+            raise gr.Error(OOM_USER_MESSAGE)
 
     return translate
 
@@ -188,11 +179,10 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
     with gr.Blocks(title="TranslateGemma UI") as app:
         gr.Markdown("# TranslateGemma UI")
 
-        forced_cpu = device_info.is_cpu and _is_gpu_hardware_available()
-        gr.Markdown(_build_device_display(device_info, forced_cpu=forced_cpu))
+        gr.Markdown(_build_device_display(device_info, forced_cpu=device_info.forced_cpu))
 
         device_choices = [("自動偵測", "auto"), ("CPU 模式", "cpu")]
-        default_device = "cpu" if device_info.is_cpu and forced_cpu else "auto"
+        default_device = "cpu" if device_info.forced_cpu else "auto"
 
         with gr.Accordion("模型設定", open=model_error is not None):
             model_status = gr.Markdown(_build_model_status(translator, model_error))

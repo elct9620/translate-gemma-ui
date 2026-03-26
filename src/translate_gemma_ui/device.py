@@ -13,6 +13,7 @@ class DeviceInfo:
     device_name: str
     memory_info: str
     is_cpu: bool
+    forced_cpu: bool = False
     vram_bytes: int | None = None
 
 
@@ -43,10 +44,12 @@ def get_device_info() -> DeviceInfo:
     forced = _get_forced_device()
     if forced == "cpu":
         logger.info("DEVICE=cpu 環境變數已設定，強制使用 CPU 模式")
+        has_gpu = torch.cuda.is_available() or torch.backends.mps.is_available()
         return DeviceInfo(
             device_name="CPU",
             memory_info=_format_memory(_get_system_memory_bytes(), "RAM"),
             is_cpu=True,
+            forced_cpu=has_gpu,
         )
 
     if torch.cuda.is_available():
