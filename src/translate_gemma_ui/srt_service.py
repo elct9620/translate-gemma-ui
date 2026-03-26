@@ -1,15 +1,13 @@
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Literal
 
-from translate_gemma_ui.glossary import apply_glossary_post, apply_glossary_pre
+from translate_gemma_ui.glossary import GlossaryMode, apply_glossary_post, apply_glossary_pre
 from translate_gemma_ui.srt_parser import SrtEntry, parse_srt, serialize_srt
+from translate_gemma_ui.text_splitter import estimate_tokens
 from translate_gemma_ui.translator import OutOfMemoryError, Translator
 
 logger = logging.getLogger(__name__)
-
-GlossaryMode = Literal["pre", "post"]
 
 
 @dataclass(frozen=True)
@@ -150,10 +148,6 @@ def _translate_srt_batch(
     )
 
 
-def _estimate_tokens(text: str) -> int:
-    return len(text) // 3
-
-
 def translate_srt_full_file(
     translator: Translator,
     entries: list[SrtEntry],
@@ -164,7 +158,7 @@ def translate_srt_full_file(
 ) -> Iterator[SrtTranslationChunk]:
     srt_text = serialize_srt(entries)
 
-    if _estimate_tokens(srt_text) > translator.max_tokens:
+    if estimate_tokens(srt_text) > translator.max_tokens:
         raise ValueError("SRT 內容超過模型上下文長度，建議改用批次模式")
 
     if glossary_mode == "pre":

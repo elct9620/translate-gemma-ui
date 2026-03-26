@@ -1,19 +1,12 @@
 import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Literal
 
-from translate_gemma_ui.glossary import apply_glossary_post, apply_glossary_pre
-from translate_gemma_ui.text_splitter import create_windows, merge_translations, split_sentences
+from translate_gemma_ui.glossary import GlossaryMode, apply_glossary_post, apply_glossary_pre
+from translate_gemma_ui.text_splitter import create_windows, estimate_tokens, merge_translations, split_sentences
 from translate_gemma_ui.translator import OutOfMemoryError, Translator
 
 logger = logging.getLogger(__name__)
-
-GlossaryMode = Literal["pre", "post"]
-
-
-def _estimate_tokens(text: str) -> int:
-    return len(text) // 3
 
 
 @dataclass(frozen=True)
@@ -27,7 +20,7 @@ def translate_text(
     text: str,
     source_lang: str,
     target_lang: str,
-    token_count_fn: Callable[[str], int] = _estimate_tokens,
+    token_count_fn: Callable[[str], int] = estimate_tokens,
     glossary: list[tuple[str, str]] | None = None,
     glossary_mode: GlossaryMode = "pre",
 ) -> Iterator[TranslationChunk]:

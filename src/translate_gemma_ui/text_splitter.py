@@ -5,6 +5,10 @@ from dataclasses import dataclass
 SENTENCE_BOUNDARY_PATTERN = re.compile(r"(?<=[.。?？!！])\s*")
 
 
+def estimate_tokens(text: str) -> int:
+    return len(text) // 3
+
+
 @dataclass(frozen=True)
 class Window:
     text: str

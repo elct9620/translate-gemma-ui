@@ -2,6 +2,9 @@ import csv
 import io
 import re
 import unicodedata
+from typing import Literal
+
+GlossaryMode = Literal["pre", "post"]
 
 
 def _is_non_latin(char: str) -> bool:
