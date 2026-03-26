@@ -197,6 +197,36 @@ class TestTranslateGemmaQuantization:
         call_kwargs = mock_model_cls.from_pretrained.call_args[1]
         assert "dtype" in call_kwargs
 
+    @patch("transformers.BitsAndBytesConfig")
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_falls_back_to_cpu_when_quantized_load_fails(
+        self, mock_processor_cls, mock_model_cls, mock_bnb_config, _mock_cached
+    ):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_bnb_config.return_value = MagicMock()
+
+        # First call (GPU quantized) raises dispatch error, second call (CPU fallback) succeeds
+        mock_model_cls.from_pretrained.side_effect = [
+            RuntimeError(
+                "Some modules are dispatched on the CPU or the disk. "
+                "Make sure you have enough GPU RAM to fit the quantized model."
+            ),
+            MagicMock(),
+        ]
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token", vram_bytes=4 * 1024**3)
+
+        assert translator.is_quantized is False
+        assert translator.is_ready is True
+
+        # Verify the retry used CPU mode
+        retry_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert retry_kwargs["device_map"] == "cpu"
+        assert "quantization_config" not in retry_kwargs
+
     def test_fake_translator_is_not_quantized(self, _mock_cached):
         translator = FakeTranslator()
         assert translator.is_quantized is False
@@ -378,6 +408,14 @@ class TestClassifyLoadError:
 
     def test_classifies_oom_runtime_error(self):
         exc = RuntimeError("CUDA out of memory")
+        result = _classify_load_error(exc)
+        assert result.error_type == "out_of_memory"
+
+    def test_classifies_cpu_dispatch_error_as_out_of_memory(self):
+        exc = RuntimeError(
+            "Some modules are dispatched on the CPU or the disk. "
+            "Make sure you have enough GPU RAM to fit the quantized model."
+        )
         result = _classify_load_error(exc)
         assert result.error_type == "out_of_memory"
 

@@ -42,7 +42,8 @@ def _is_oom_error(exc: BaseException) -> bool:
             return True
     except ImportError:
         pass
-    return isinstance(exc, RuntimeError) and "out of memory" in str(exc).lower()
+    msg = str(exc).lower()
+    return isinstance(exc, RuntimeError) and ("out of memory" in msg or "dispatched on the cpu or the disk" in msg)
 
 
 def _classify_load_error(exc: Exception) -> ModelLoadError:
@@ -175,7 +176,19 @@ class TranslateGemmaTranslator:
         else:
             load_kwargs["dtype"] = dtype
 
-        self._model = AutoModelForImageTextToText.from_pretrained(model_id, **load_kwargs)
+        try:
+            self._model = AutoModelForImageTextToText.from_pretrained(model_id, **load_kwargs)
+        except RuntimeError as exc:
+            if quantization_config is not None and _is_oom_error(exc):
+                logger.warning("GPU cannot fit quantized model; falling back to CPU mode (float32)")
+                self._is_quantized = False
+                load_kwargs.pop("quantization_config", None)
+                load_kwargs["device_map"] = "cpu"
+                load_kwargs["dtype"] = torch.float32
+                self._model = AutoModelForImageTextToText.from_pretrained(model_id, **load_kwargs)
+            else:
+                raise
+
         self._max_tokens = getattr(self._model.config, "max_position_embeddings", 8192)
         self._is_ready = True
         logger.info("Model loaded successfully on %s", self._model.device)
