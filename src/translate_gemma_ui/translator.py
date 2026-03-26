@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Iterator
 from threading import Thread
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -22,34 +22,15 @@ class OutOfMemoryError(RuntimeError):
     pass
 
 
+LoadErrorType = Literal["auth", "network", "out_of_memory", "unknown"]
+
+
 class ModelLoadError(RuntimeError):
     """Raised when model loading fails with a categorized cause."""
 
-    def __init__(self, message: str, error_type: str, original: Exception | None = None):
+    def __init__(self, message: str, error_type: LoadErrorType):
         super().__init__(message)
-        self.error_type = error_type  # "auth" | "network" | "out_of_memory" | "unknown"
-        self.original = original
-
-
-def _classify_load_error(exc: Exception) -> ModelLoadError:
-    """Classify a model loading exception into a ModelLoadError with an appropriate type."""
-    try:
-        from huggingface_hub.errors import GatedRepoError, RepositoryNotFoundError
-
-        if isinstance(exc, (GatedRepoError, RepositoryNotFoundError)):
-            return ModelLoadError(str(exc), error_type="auth", original=exc)
-    except ImportError:
-        pass
-
-    if _is_oom_error(exc):
-        return ModelLoadError(str(exc), error_type="out_of_memory", original=exc)
-
-    if isinstance(exc, (ConnectionError, OSError)) and any(
-        kw in str(exc).lower() for kw in ("connection", "resolve", "network", "unreachable", "timeout")
-    ):
-        return ModelLoadError(str(exc), error_type="network", original=exc)
-
-    return ModelLoadError(str(exc), error_type="unknown", original=exc)
+        self.error_type = error_type
 
 
 def _is_oom_error(exc: BaseException) -> bool:
@@ -62,6 +43,27 @@ def _is_oom_error(exc: BaseException) -> bool:
     except ImportError:
         pass
     return isinstance(exc, RuntimeError) and "out of memory" in str(exc).lower()
+
+
+def _classify_load_error(exc: Exception) -> ModelLoadError:
+    """Classify a model loading exception into a ModelLoadError with an appropriate type."""
+    try:
+        from huggingface_hub.errors import GatedRepoError, RepositoryNotFoundError
+
+        if isinstance(exc, (GatedRepoError, RepositoryNotFoundError)):
+            return ModelLoadError(str(exc), error_type="auth")
+    except ImportError:
+        pass
+
+    if _is_oom_error(exc):
+        return ModelLoadError(str(exc), error_type="out_of_memory")
+
+    if isinstance(exc, (ConnectionError, OSError)) and any(
+        kw in str(exc).lower() for kw in ("connection", "resolve", "network", "unreachable", "timeout")
+    ):
+        return ModelLoadError(str(exc), error_type="network")
+
+    return ModelLoadError(str(exc), error_type="unknown")
 
 SUPPORTED_LANGUAGES: dict[str, str] = {
     "en": "English",

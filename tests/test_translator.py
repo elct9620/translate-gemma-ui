@@ -334,41 +334,30 @@ class TestModelLoadError:
         assert err.error_type == "auth"
         assert "fail" in str(err)
 
-    def test_carries_original_exception(self):
+    def test_original_accessible_via_cause(self):
         original = ValueError("original")
-        err = ModelLoadError("fail", error_type="unknown", original=original)
-        assert err.original is original
-
-    def test_original_defaults_to_none(self):
-        err = ModelLoadError("fail", error_type="unknown")
-        assert err.original is None
+        try:
+            raise ModelLoadError("fail", error_type="unknown") from original
+        except ModelLoadError as err:
+            assert err.__cause__ is original
 
 
 class TestClassifyLoadError:
     def test_classifies_gated_repo_error_as_auth(self):
-        try:
-            from huggingface_hub.errors import GatedRepoError
-
-            mock_response = MagicMock()
-            mock_response.status_code = 403
-            mock_response.headers = {}
-            exc = GatedRepoError("access denied", response=mock_response)
-        except ImportError:
-            pytest.skip("huggingface_hub not installed")
+        hf_errors = pytest.importorskip("huggingface_hub.errors")
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+        mock_response.headers = {}
+        exc = hf_errors.GatedRepoError("access denied", response=mock_response)
         result = _classify_load_error(exc)
         assert result.error_type == "auth"
-        assert result.original is exc
 
     def test_classifies_repo_not_found_as_auth(self):
-        try:
-            from huggingface_hub.errors import RepositoryNotFoundError
-        except ImportError:
-            pytest.skip("huggingface_hub not installed")
-
+        hf_errors = pytest.importorskip("huggingface_hub.errors")
         mock_response = MagicMock()
         mock_response.status_code = 404
         mock_response.headers = {}
-        exc = RepositoryNotFoundError("not found", response=mock_response)
+        exc = hf_errors.RepositoryNotFoundError("not found", response=mock_response)
         result = _classify_load_error(exc)
         assert result.error_type == "auth"
 
@@ -376,7 +365,6 @@ class TestClassifyLoadError:
         exc = ConnectionError("connection refused")
         result = _classify_load_error(exc)
         assert result.error_type == "network"
-        assert result.original is exc
 
     def test_classifies_os_error_with_network_keyword_as_network(self):
         exc = OSError("network unreachable")
@@ -397,7 +385,6 @@ class TestClassifyLoadError:
         exc = ValueError("something went wrong")
         result = _classify_load_error(exc)
         assert result.error_type == "unknown"
-        assert result.original is exc
 
 
 class TestTranslateGemmaRaisesModelLoadError:
