@@ -17,6 +17,16 @@ logger = logging.getLogger(__name__)
 GLOSSARY_MODE_CHOICES = [("翻譯前替換", "pre"), ("翻譯後替換", "post")]
 
 
+def _is_gpu_hardware_available() -> bool:
+    """Check if GPU hardware is present, ignoring DEVICE env var override."""
+    try:
+        import torch
+
+        return torch.cuda.is_available() or torch.backends.mps.is_available()
+    except ImportError:
+        return False
+
+
 def _parse_glossary_file(file_path: str | None) -> list[tuple[str, str]] | None:
     """Parse glossary CSV file, return None if no file provided."""
     if not file_path:
@@ -28,10 +38,12 @@ def _parse_glossary_file(file_path: str | None) -> list[tuple[str, str]] | None:
         raise gr.Error(f"詞彙表格式錯誤：{e}。正確格式為 CSV（每行：來源詞,目標詞）")
 
 
-def _build_device_display(device_info: DeviceInfo) -> str:
+def _build_device_display(device_info: DeviceInfo, *, forced_cpu: bool = False) -> str:
     parts = [f"**裝置：** {device_info.device_name} ({device_info.memory_info})"]
-    if device_info.is_cpu:
-        parts.append("⚠️ 使用 CPU 運算，翻譯速度可能較慢")
+    if device_info.is_cpu and forced_cpu:
+        parts.append("⚠️ 使用 CPU 模式（可在「模型設定」中切換回自動偵測）")
+    elif device_info.is_cpu:
+        parts.append("ℹ️ 未偵測到 GPU，使用 CPU 運算，翻譯速度可能較慢")
     return "\n\n".join(parts)
 
 
@@ -70,7 +82,11 @@ def _make_translate_fn(
             ):
                 yield chunk.text, chunk.progress, gr.update(visible=False)
         except OutOfMemoryError:
-            yield "", "⚠️ 記憶體不足，建議關閉其他應用程式或改用 CPU 模式", gr.update(visible=True)
+            yield (
+                "",
+                "⚠️ 記憶體不足。請展開「模型設定」，將裝置切換為 CPU 模式，然後點擊「載入模型」重試。",
+                gr.update(visible=True),
+            )
         except Exception:
             logger.exception("Translation failed")
             yield "", "⚠️ 翻譯發生錯誤", gr.update(visible=True)
@@ -130,7 +146,7 @@ def _make_srt_translate_fn(
                     output_path = _write_srt_temp(chunk.entries, file_path)
                     yield chunk.progress, serialize_srt(chunk.entries), output_path
         except OutOfMemoryError:
-            raise gr.Error("記憶體不足，建議關閉其他應用程式或改用 CPU 模式")
+            raise gr.Error("記憶體不足。請展開「模型設定」，將裝置切換為 CPU 模式，然後點擊「載入模型」重試。")
 
     return translate
 
@@ -138,14 +154,15 @@ def _make_srt_translate_fn(
 def _make_load_model_fn(
     translator_ref: list[Translator],
     device_info: DeviceInfo,
-) -> Callable[[str], str]:
-    def load_model(token: str) -> str:
+) -> Callable[[str, str], str]:
+    def load_model(token: str, device_choice: str) -> str:
         from translate_gemma_ui.translator import TranslateGemmaTranslator
 
         token_value = token.strip() if token and token.strip() else None
+        force_cpu = device_choice == "cpu" or (device_choice == "auto" and device_info.is_cpu)
         try:
             translator_ref[0] = TranslateGemmaTranslator(
-                token=token_value, vram_bytes=device_info.vram_bytes, force_cpu=device_info.is_cpu
+                token=token_value, vram_bytes=device_info.vram_bytes, force_cpu=force_cpu
             )
             quantized_note = "（4-bit 量化模式）" if translator_ref[0].is_quantized else ""
             return f"✅ 模型載入成功{quantized_note}"
@@ -170,10 +187,21 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
 
     with gr.Blocks(title="TranslateGemma UI") as app:
         gr.Markdown("# TranslateGemma UI")
-        gr.Markdown(_build_device_display(device_info))
+
+        forced_cpu = device_info.is_cpu and _is_gpu_hardware_available()
+        gr.Markdown(_build_device_display(device_info, forced_cpu=forced_cpu))
+
+        device_choices = [("自動偵測", "auto"), ("CPU 模式", "cpu")]
+        default_device = "cpu" if device_info.is_cpu and forced_cpu else "auto"
 
         with gr.Accordion("模型設定", open=model_error is not None):
             model_status = gr.Markdown(_build_model_status(translator, model_error))
+            device_radio = gr.Radio(
+                choices=device_choices,
+                value=default_device,
+                label="裝置選擇",
+                info="選擇模型運算裝置。CPU 模式較慢但不需要 GPU。",
+            )
             hf_token_input = gr.Textbox(
                 label="HF Token",
                 type="password",
@@ -184,7 +212,7 @@ def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: 
 
             load_model_btn.click(
                 fn=_make_load_model_fn(translator_ref, device_info),
-                inputs=[hf_token_input],
+                inputs=[hf_token_input, device_radio],
                 outputs=[model_status],
             )
 

@@ -45,10 +45,16 @@ class TestCreateApp:
 
 
 class TestDeviceDisplay:
-    def test_cpu_shows_warning(self):
+    def test_cpu_no_gpu_shows_info(self):
         display = _build_device_display(_cpu_device())
         assert "CPU" in display
+        assert "未偵測到 GPU" in display
         assert "翻譯速度可能較慢" in display
+
+    def test_cpu_forced_shows_switch_hint(self):
+        display = _build_device_display(_cpu_device(), forced_cpu=True)
+        assert "CPU 模式" in display
+        assert "模型設定" in display
 
     def test_gpu_no_warning(self):
         display = _build_device_display(_gpu_device())
@@ -84,7 +90,7 @@ class TestLoadModelFn:
     def test_load_failure_returns_error_message(self, _mock_cls):
         translator_ref = [FakeTranslator()]
         fn = _make_load_model_fn(translator_ref, _gpu_device())
-        result = fn("")
+        result = fn("", "auto")
         assert "載入失敗" in result
         assert isinstance(translator_ref[0], FakeTranslator)
 
@@ -92,7 +98,7 @@ class TestLoadModelFn:
     def test_load_with_empty_token_still_attempts(self, _mock_cls):
         translator_ref = [FakeTranslator()]
         fn = _make_load_model_fn(translator_ref, _gpu_device())
-        result = fn("   ")
+        result = fn("   ", "auto")
         assert "載入失敗" in result
 
     @patch("translate_gemma_ui.translator.TranslateGemmaTranslator")
@@ -102,7 +108,7 @@ class TestLoadModelFn:
 
         translator_ref = [FakeTranslator()]
         fn = _make_load_model_fn(translator_ref, _gpu_device())
-        result = fn("test-token")
+        result = fn("test-token", "auto")
 
         assert "載入成功" in result
         assert translator_ref[0] is mock_translator
@@ -114,10 +120,44 @@ class TestLoadModelFn:
 
         translator_ref = [FakeTranslator()]
         fn = _make_load_model_fn(translator_ref, device)
-        fn("test-token")
+        fn("test-token", "auto")
 
         call_kwargs = mock_cls.call_args[1]
         assert call_kwargs["vram_bytes"] == 4 * 1024**3
+
+    @patch("translate_gemma_ui.translator.TranslateGemmaTranslator")
+    def test_device_choice_cpu_forces_cpu_mode(self, mock_cls):
+        mock_cls.return_value = MagicMock()
+
+        translator_ref = [FakeTranslator()]
+        fn = _make_load_model_fn(translator_ref, _gpu_device())
+        fn("test-token", "cpu")
+
+        call_kwargs = mock_cls.call_args[1]
+        assert call_kwargs["force_cpu"] is True
+
+    @patch("translate_gemma_ui.translator.TranslateGemmaTranslator")
+    def test_device_choice_auto_uses_device_info(self, mock_cls):
+        mock_cls.return_value = MagicMock()
+
+        translator_ref = [FakeTranslator()]
+        fn = _make_load_model_fn(translator_ref, _gpu_device())
+        fn("test-token", "auto")
+
+        call_kwargs = mock_cls.call_args[1]
+        assert call_kwargs["force_cpu"] is False
+
+    @patch("translate_gemma_ui.translator.TranslateGemmaTranslator")
+    def test_device_choice_auto_respects_cpu_device_info(self, mock_cls):
+        mock_cls.return_value = MagicMock()
+        cpu_device = DeviceInfo(device_name="CPU", memory_info="32.00 GB RAM", is_cpu=True)
+
+        translator_ref = [FakeTranslator()]
+        fn = _make_load_model_fn(translator_ref, cpu_device)
+        fn("test-token", "auto")
+
+        call_kwargs = mock_cls.call_args[1]
+        assert call_kwargs["force_cpu"] is True
 
 
 class TestTranslateFn:
