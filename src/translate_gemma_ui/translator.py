@@ -22,6 +22,36 @@ class OutOfMemoryError(RuntimeError):
     pass
 
 
+class ModelLoadError(RuntimeError):
+    """Raised when model loading fails with a categorized cause."""
+
+    def __init__(self, message: str, error_type: str, original: Exception | None = None):
+        super().__init__(message)
+        self.error_type = error_type  # "auth" | "network" | "out_of_memory" | "unknown"
+        self.original = original
+
+
+def _classify_load_error(exc: Exception) -> ModelLoadError:
+    """Classify a model loading exception into a ModelLoadError with an appropriate type."""
+    try:
+        from huggingface_hub.errors import GatedRepoError, RepositoryNotFoundError
+
+        if isinstance(exc, (GatedRepoError, RepositoryNotFoundError)):
+            return ModelLoadError(str(exc), error_type="auth", original=exc)
+    except ImportError:
+        pass
+
+    if _is_oom_error(exc):
+        return ModelLoadError(str(exc), error_type="out_of_memory", original=exc)
+
+    if isinstance(exc, (ConnectionError, OSError)) and any(
+        kw in str(exc).lower() for kw in ("connection", "resolve", "network", "unreachable", "timeout")
+    ):
+        return ModelLoadError(str(exc), error_type="network", original=exc)
+
+    return ModelLoadError(str(exc), error_type="unknown", original=exc)
+
+
 def _is_oom_error(exc: BaseException) -> bool:
     """Check if an exception is a CUDA/MPS out-of-memory error."""
     try:
@@ -80,12 +110,28 @@ class TranslateGemmaTranslator:
         vram_bytes: int | None = None,
         force_cpu: bool = False,
     ):
-        import torch
-        from transformers import AutoModelForImageTextToText, AutoProcessor
-
         logger.info("Loading model %s...", model_id)
 
         self._model_name = model_id
+        self._languages = SUPPORTED_LANGUAGES
+
+        try:
+            self._load_model(model_id, token, vram_bytes, force_cpu)
+        except ModelLoadError:
+            raise
+        except Exception as e:
+            raise _classify_load_error(e) from e
+
+    def _load_model(
+        self,
+        model_id: str,
+        token: str | None,
+        vram_bytes: int | None,
+        force_cpu: bool,
+    ) -> None:
+        import torch
+        from transformers import AutoModelForImageTextToText, AutoProcessor
+
         cached = _is_model_cached(model_id)
         if cached:
             logger.info("Model found in local cache, loading offline")
@@ -95,7 +141,6 @@ class TranslateGemmaTranslator:
         self._processor = AutoProcessor.from_pretrained(
             model_id, token=resolved_token, local_files_only=cached
         )
-        self._languages = SUPPORTED_LANGUAGES
 
         quantization_config = None
         self._is_quantized = False

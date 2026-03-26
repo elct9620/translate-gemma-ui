@@ -4,10 +4,11 @@ import gradio as gr
 import pytest
 
 from translate_gemma_ui.device import DeviceInfo
-from translate_gemma_ui.translator import FakeTranslator, OutOfMemoryError
+from translate_gemma_ui.translator import FakeTranslator, ModelLoadError, OutOfMemoryError
 from translate_gemma_ui.ui import (
     _build_device_display,
     _build_model_status,
+    _format_load_error,
     _make_load_model_fn,
     _make_srt_translate_fn,
     _make_translate_fn,
@@ -86,7 +87,10 @@ class TestModelStatus:
 
 
 class TestLoadModelFn:
-    @patch("translate_gemma_ui.translator.TranslateGemmaTranslator", side_effect=RuntimeError("model not found"))
+    @patch(
+        "translate_gemma_ui.translator.TranslateGemmaTranslator",
+        side_effect=ModelLoadError("model not found", error_type="unknown"),
+    )
     def test_load_failure_returns_error_message(self, _mock_cls):
         translator_ref = [FakeTranslator()]
         fn = _make_load_model_fn(translator_ref, _gpu_device())
@@ -94,7 +98,10 @@ class TestLoadModelFn:
         assert "載入失敗" in result
         assert isinstance(translator_ref[0], FakeTranslator)
 
-    @patch("translate_gemma_ui.translator.TranslateGemmaTranslator", side_effect=RuntimeError("model not found"))
+    @patch(
+        "translate_gemma_ui.translator.TranslateGemmaTranslator",
+        side_effect=ModelLoadError("model not found", error_type="unknown"),
+    )
     def test_load_with_empty_token_still_attempts(self, _mock_cls):
         translator_ref = [FakeTranslator()]
         fn = _make_load_model_fn(translator_ref, _gpu_device())
@@ -158,6 +165,56 @@ class TestLoadModelFn:
 
         call_kwargs = mock_cls.call_args[1]
         assert call_kwargs["force_cpu"] is True
+
+    @patch(
+        "translate_gemma_ui.translator.TranslateGemmaTranslator",
+        side_effect=ModelLoadError("gated", error_type="auth"),
+    )
+    def test_auth_error_shows_token_guidance(self, _mock_cls):
+        translator_ref = [FakeTranslator()]
+        fn = _make_load_model_fn(translator_ref, _gpu_device())
+        result = fn("bad-token", "auto")
+        assert "認證失敗" in result
+        assert "HF Token" in result
+
+    @patch(
+        "translate_gemma_ui.translator.TranslateGemmaTranslator",
+        side_effect=ModelLoadError("connection refused", error_type="network"),
+    )
+    def test_network_error_shows_connection_guidance(self, _mock_cls):
+        translator_ref = [FakeTranslator()]
+        fn = _make_load_model_fn(translator_ref, _gpu_device())
+        result = fn("token", "auto")
+        assert "網路連線" in result
+
+    @patch(
+        "translate_gemma_ui.translator.TranslateGemmaTranslator",
+        side_effect=ModelLoadError("CUDA out of memory", error_type="out_of_memory"),
+    )
+    def test_oom_error_shows_cpu_switch_guidance(self, _mock_cls):
+        translator_ref = [FakeTranslator()]
+        fn = _make_load_model_fn(translator_ref, _gpu_device())
+        result = fn("token", "auto")
+        assert "記憶體不足" in result
+
+
+class TestFormatLoadError:
+    def test_auth_error(self):
+        result = _format_load_error(ModelLoadError("gated", error_type="auth"))
+        assert "認證失敗" in result
+
+    def test_network_error(self):
+        result = _format_load_error(ModelLoadError("refused", error_type="network"))
+        assert "網路連線" in result
+
+    def test_oom_error(self):
+        result = _format_load_error(ModelLoadError("oom", error_type="out_of_memory"))
+        assert "記憶體不足" in result
+
+    def test_unknown_error_includes_original_message(self):
+        result = _format_load_error(ModelLoadError("something broke", error_type="unknown"))
+        assert "載入失敗" in result
+        assert "something broke" in result
 
 
 class TestTranslateFn:
@@ -259,6 +316,14 @@ class TestSrtTranslateFnOOM:
         srt_file.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
         fn = _make_srt_translate_fn([OOMTranslator()])
         with pytest.raises(gr.Error, match="記憶體不足"):
+            list(fn(str(srt_file), "en", "ja", "batch", 1))
+
+    @patch("translate_gemma_ui.ui._write_srt_temp", side_effect=RuntimeError("disk full"))
+    def test_generic_error_raises_gr_error(self, _mock_write, tmp_path):
+        srt_file = tmp_path / "test.srt"
+        srt_file.write_text("1\n00:00:01,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
+        fn = _make_srt_translate_fn([FakeTranslator()])
+        with pytest.raises(gr.Error, match="翻譯發生錯誤"):
             list(fn(str(srt_file), "en", "ja", "batch", 1))
 
 

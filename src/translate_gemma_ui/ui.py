@@ -10,12 +10,23 @@ from translate_gemma_ui.glossary import parse_glossary
 from translate_gemma_ui.srt_parser import SrtEntry, parse_srt, serialize_srt
 from translate_gemma_ui.srt_service import translate_srt, translate_srt_full_file
 from translate_gemma_ui.translate_service import translate_text
-from translate_gemma_ui.translator import OutOfMemoryError, Translator
+from translate_gemma_ui.translator import ModelLoadError, OutOfMemoryError, Translator
 
 logger = logging.getLogger(__name__)
 
 GLOSSARY_MODE_CHOICES = [("翻譯前替換", "pre"), ("翻譯後替換", "post")]
 OOM_USER_MESSAGE = "記憶體不足。請展開「模型設定」，將裝置切換為 CPU 模式，然後點擊「載入模型」重試。"
+
+_LOAD_ERROR_MESSAGES: dict[str, str] = {
+    "auth": "認證失敗：請確認 HF Token 是否正確，以及是否已在模型頁面接受使用條款。",
+    "network": "網路連線失敗：請檢查網路連線後重試。",
+    "out_of_memory": f"載入模型時{OOM_USER_MESSAGE}",
+}
+
+
+def _format_load_error(error: ModelLoadError) -> str:
+    message = _LOAD_ERROR_MESSAGES.get(error.error_type, f"模型載入失敗：{error}")
+    return f"⚠️ {message}"
 
 
 def _parse_glossary_file(file_path: str | None) -> list[tuple[str, str]] | None:
@@ -138,6 +149,9 @@ def _make_srt_translate_fn(
                     yield chunk.progress, serialize_srt(chunk.entries), output_path
         except OutOfMemoryError:
             raise gr.Error(OOM_USER_MESSAGE)
+        except Exception:
+            logger.exception("SRT translation failed")
+            raise gr.Error("字幕翻譯發生錯誤")
 
     return translate
 
@@ -157,9 +171,9 @@ def _make_load_model_fn(
             )
             quantized_note = "（4-bit 量化模式）" if translator_ref[0].is_quantized else ""
             return f"✅ 模型載入成功{quantized_note}"
-        except Exception as e:
-            logger.exception("Failed to load model with provided token")
-            return f"⚠️ 模型載入失敗：{e}"
+        except ModelLoadError as e:
+            logger.exception("Failed to load model: %s (type=%s)", e, e.error_type)
+            return _format_load_error(e)
 
     return load_model
 

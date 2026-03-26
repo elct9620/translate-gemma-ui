@@ -1,10 +1,14 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from translate_gemma_ui.translator import (
     SUPPORTED_LANGUAGES,
     FakeTranslator,
+    ModelLoadError,
     OutOfMemoryError,
     Translator,
+    _classify_load_error,
     _is_model_cached,
 )
 
@@ -319,3 +323,104 @@ class TestOutOfMemoryError:
     def test_carries_friendly_message(self):
         err = OutOfMemoryError("記憶體不足")
         assert "記憶體不足" in str(err)
+
+
+class TestModelLoadError:
+    def test_is_runtime_error_subclass(self):
+        assert issubclass(ModelLoadError, RuntimeError)
+
+    def test_carries_error_type(self):
+        err = ModelLoadError("fail", error_type="auth")
+        assert err.error_type == "auth"
+        assert "fail" in str(err)
+
+    def test_carries_original_exception(self):
+        original = ValueError("original")
+        err = ModelLoadError("fail", error_type="unknown", original=original)
+        assert err.original is original
+
+    def test_original_defaults_to_none(self):
+        err = ModelLoadError("fail", error_type="unknown")
+        assert err.original is None
+
+
+class TestClassifyLoadError:
+    def test_classifies_gated_repo_error_as_auth(self):
+        try:
+            from huggingface_hub.errors import GatedRepoError
+
+            mock_response = MagicMock()
+            mock_response.status_code = 403
+            mock_response.headers = {}
+            exc = GatedRepoError("access denied", response=mock_response)
+        except ImportError:
+            pytest.skip("huggingface_hub not installed")
+        result = _classify_load_error(exc)
+        assert result.error_type == "auth"
+        assert result.original is exc
+
+    def test_classifies_repo_not_found_as_auth(self):
+        try:
+            from huggingface_hub.errors import RepositoryNotFoundError
+        except ImportError:
+            pytest.skip("huggingface_hub not installed")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.headers = {}
+        exc = RepositoryNotFoundError("not found", response=mock_response)
+        result = _classify_load_error(exc)
+        assert result.error_type == "auth"
+
+    def test_classifies_connection_error_as_network(self):
+        exc = ConnectionError("connection refused")
+        result = _classify_load_error(exc)
+        assert result.error_type == "network"
+        assert result.original is exc
+
+    def test_classifies_os_error_with_network_keyword_as_network(self):
+        exc = OSError("network unreachable")
+        result = _classify_load_error(exc)
+        assert result.error_type == "network"
+
+    def test_classifies_os_error_without_keyword_as_unknown(self):
+        exc = OSError("disk full")
+        result = _classify_load_error(exc)
+        assert result.error_type == "unknown"
+
+    def test_classifies_oom_runtime_error(self):
+        exc = RuntimeError("CUDA out of memory")
+        result = _classify_load_error(exc)
+        assert result.error_type == "out_of_memory"
+
+    def test_classifies_generic_error_as_unknown(self):
+        exc = ValueError("something went wrong")
+        result = _classify_load_error(exc)
+        assert result.error_type == "unknown"
+        assert result.original is exc
+
+
+class TestTranslateGemmaRaisesModelLoadError:
+    @patch("translate_gemma_ui.translator._is_model_cached", return_value=False)
+    @patch("transformers.AutoProcessor")
+    def test_init_wraps_error_as_model_load_error(self, mock_processor_cls, _mock_cached):
+        mock_processor_cls.from_pretrained.side_effect = RuntimeError("something broke")
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        with pytest.raises(ModelLoadError) as exc_info:
+            TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+
+        assert exc_info.value.error_type == "unknown"
+
+    @patch("translate_gemma_ui.translator._is_model_cached", return_value=False)
+    @patch("transformers.AutoProcessor")
+    def test_init_wraps_connection_error(self, mock_processor_cls, _mock_cached):
+        mock_processor_cls.from_pretrained.side_effect = ConnectionError("connection refused")
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        with pytest.raises(ModelLoadError) as exc_info:
+            TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+
+        assert exc_info.value.error_type == "network"
