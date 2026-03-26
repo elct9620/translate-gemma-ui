@@ -144,7 +144,9 @@ def _make_load_model_fn(
 
         token_value = token.strip() if token and token.strip() else None
         try:
-            translator_ref[0] = TranslateGemmaTranslator(token=token_value, vram_bytes=device_info.vram_bytes)
+            translator_ref[0] = TranslateGemmaTranslator(
+                token=token_value, vram_bytes=device_info.vram_bytes, force_cpu=device_info.is_cpu
+            )
             quantized_note = "（4-bit 量化模式）" if translator_ref[0].is_quantized else ""
             return f"✅ 模型載入成功{quantized_note}"
         except Exception as e:

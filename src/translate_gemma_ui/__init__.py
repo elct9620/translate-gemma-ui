@@ -18,7 +18,7 @@ def create_default_app() -> gr.Blocks:
     try:
         from translate_gemma_ui.translator import TranslateGemmaTranslator
 
-        translator = TranslateGemmaTranslator(vram_bytes=device_info.vram_bytes)
+        translator = TranslateGemmaTranslator(vram_bytes=device_info.vram_bytes, force_cpu=device_info.is_cpu)
     except OSError as e:
         if "getaddrinfo" in str(e).lower() or "name or service not known" in str(e).lower():
             logger.exception("Network error during model loading")

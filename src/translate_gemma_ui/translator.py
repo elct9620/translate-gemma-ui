@@ -78,6 +78,7 @@ class TranslateGemmaTranslator:
         model_id: str = "google/translategemma-4b-it",
         token: str | None = None,
         vram_bytes: int | None = None,
+        force_cpu: bool = False,
     ):
         import torch
         from transformers import AutoModelForImageTextToText, AutoProcessor
@@ -96,27 +97,32 @@ class TranslateGemmaTranslator:
         )
         self._languages = SUPPORTED_LANGUAGES
 
-        dtype = torch.bfloat16 if torch.cuda.is_available() or torch.backends.mps.is_available() else torch.float32
-
         quantization_config = None
         self._is_quantized = False
 
-        if vram_bytes is not None and vram_bytes < _QUANTIZATION_VRAM_THRESHOLD:
-            try:
-                from transformers import BitsAndBytesConfig
+        if force_cpu:
+            logger.info("Force CPU mode enabled; using float32 without quantization")
+            dtype = torch.float32
+        else:
+            dtype = torch.bfloat16 if torch.cuda.is_available() or torch.backends.mps.is_available() else torch.float32
 
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=torch.bfloat16,
-                    bnb_4bit_use_double_quant=True,
-                )
-                self._is_quantized = True
-                logger.info("VRAM (%.2f GB) below threshold; enabling 4-bit quantization", vram_bytes / (1024**3))
-            except ImportError:
-                logger.warning("bitsandbytes not installed; loading without quantization (may OOM)")
+            if vram_bytes is not None and vram_bytes < _QUANTIZATION_VRAM_THRESHOLD:
+                try:
+                    from transformers import BitsAndBytesConfig
 
-        load_kwargs: dict = {"device_map": "auto", "token": resolved_token, "local_files_only": cached}
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_quant_type="nf4",
+                        bnb_4bit_compute_dtype=torch.bfloat16,
+                        bnb_4bit_use_double_quant=True,
+                    )
+                    self._is_quantized = True
+                    logger.info("VRAM (%.2f GB) below threshold; enabling 4-bit quantization", vram_bytes / (1024**3))
+                except ImportError:
+                    logger.warning("bitsandbytes not installed; loading without quantization (may OOM)")
+
+        device_map = "cpu" if force_cpu else "auto"
+        load_kwargs: dict = {"device_map": device_map, "token": resolved_token, "local_files_only": cached}
         if quantization_config is not None:
             load_kwargs["quantization_config"] = quantization_config
         else:

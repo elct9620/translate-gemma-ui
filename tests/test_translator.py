@@ -198,6 +198,68 @@ class TestTranslateGemmaQuantization:
         assert translator.is_quantized is False
 
 
+@patch("translate_gemma_ui.translator._is_model_cached", return_value=False)
+class TestTranslateGemmaForceCpu:
+    """Tests for force_cpu parameter skipping quantization and using CPU device_map."""
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_force_cpu_uses_cpu_device_map(self, mock_processor_cls, mock_model_cls, _mock_cached):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        TranslateGemmaTranslator(model_id="test-model", token="fake-token", force_cpu=True)
+
+        call_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert call_kwargs["device_map"] == "cpu"
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_force_cpu_skips_quantization_even_with_low_vram(self, mock_processor_cls, mock_model_cls, _mock_cached):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(
+            model_id="test-model", token="fake-token", vram_bytes=4 * 1024**3, force_cpu=True
+        )
+
+        assert translator.is_quantized is False
+        call_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert "quantization_config" not in call_kwargs
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_force_cpu_uses_float32_dtype(self, mock_processor_cls, mock_model_cls, _mock_cached):
+        import torch
+
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        TranslateGemmaTranslator(model_id="test-model", token="fake-token", force_cpu=True)
+
+        call_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert call_kwargs["dtype"] == torch.float32
+
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_default_uses_auto_device_map(self, mock_processor_cls, mock_model_cls, _mock_cached):
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+        mock_model_cls.from_pretrained.return_value = MagicMock()
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        TranslateGemmaTranslator(model_id="test-model", token="fake-token")
+
+        call_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert call_kwargs["device_map"] == "auto"
+
+
 class TestIsModelCached:
     @patch("huggingface_hub.try_to_load_from_cache", return_value="/path/to/config.json")
     def test_returns_true_when_cached(self, _mock):

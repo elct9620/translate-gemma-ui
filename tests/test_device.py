@@ -144,6 +144,66 @@ def test_windows_cpu_fallback_logs_cuda_install_hint(caplog):
     assert any("CUDA" in record.message for record in caplog.records)
 
 
+def test_force_cpu_via_env_var():
+    system_mem = 32 * 1024**3
+    with (
+        patch("translate_gemma_ui.device.torch") as mock_torch,
+        patch("translate_gemma_ui.device._get_system_memory_bytes", return_value=system_mem),
+        patch.dict("os.environ", {"DEVICE": "cpu"}),
+    ):
+        mock_torch.cuda.is_available.return_value = True
+
+        info = get_device_info()
+
+    assert info.is_cpu is True
+    assert info.device_name == "CPU"
+    mock_torch.cuda.is_available.assert_not_called()
+
+
+def test_force_cpu_env_var_case_insensitive():
+    system_mem = 32 * 1024**3
+    with (
+        patch("translate_gemma_ui.device.torch") as mock_torch,
+        patch("translate_gemma_ui.device._get_system_memory_bytes", return_value=system_mem),
+        patch.dict("os.environ", {"DEVICE": "CPU"}),
+    ):
+        mock_torch.cuda.is_available.return_value = True
+
+        info = get_device_info()
+
+    assert info.is_cpu is True
+
+
+def test_device_env_var_non_cpu_does_not_override():
+    props = SimpleNamespace(total_memory=8 * 1024**3)
+    with (
+        patch("translate_gemma_ui.device.torch") as mock_torch,
+        patch.dict("os.environ", {"DEVICE": "cuda"}),
+    ):
+        mock_torch.cuda.is_available.return_value = True
+        mock_torch.cuda.get_device_name.return_value = "NVIDIA RTX 4090"
+        mock_torch.cuda.get_device_properties.return_value = props
+
+        info = get_device_info()
+
+    assert info.is_cpu is False
+
+
+def test_empty_device_env_var_does_not_override():
+    props = SimpleNamespace(total_memory=8 * 1024**3)
+    with (
+        patch("translate_gemma_ui.device.torch") as mock_torch,
+        patch.dict("os.environ", {"DEVICE": ""}),
+    ):
+        mock_torch.cuda.is_available.return_value = True
+        mock_torch.cuda.get_device_name.return_value = "NVIDIA RTX 4090"
+        mock_torch.cuda.get_device_properties.return_value = props
+
+        info = get_device_info()
+
+    assert info.is_cpu is False
+
+
 def test_non_windows_cpu_fallback_no_cuda_hint(caplog):
     system_mem = 16 * 1024**3
     with (

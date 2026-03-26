@@ -33,7 +33,22 @@ def _get_system_memory_bytes() -> int:
         return mem_status.value * 1024
 
 
+def _get_forced_device() -> str | None:
+    """Read the DEVICE environment variable (case-insensitive)."""
+    value = os.environ.get("DEVICE", "").strip().lower()
+    return value if value else None
+
+
 def get_device_info() -> DeviceInfo:
+    forced = _get_forced_device()
+    if forced == "cpu":
+        logger.info("DEVICE=cpu 環境變數已設定，強制使用 CPU 模式")
+        return DeviceInfo(
+            device_name="CPU",
+            memory_info=_format_memory(_get_system_memory_bytes(), "RAM"),
+            is_cpu=True,
+        )
+
     if torch.cuda.is_available():
         props = torch.cuda.get_device_properties(0)
         return DeviceInfo(
