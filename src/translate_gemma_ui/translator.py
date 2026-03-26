@@ -179,8 +179,8 @@ class TranslateGemmaTranslator:
         try:
             self._model = AutoModelForImageTextToText.from_pretrained(model_id, **load_kwargs)
         except RuntimeError as exc:
-            if quantization_config is not None and _is_oom_error(exc):
-                logger.warning("GPU cannot fit quantized model; falling back to CPU mode (float32)")
+            if not force_cpu and _is_oom_error(exc):
+                logger.warning("GPU cannot fit model; falling back to CPU mode (float32)")
                 self._is_quantized = False
                 load_kwargs.pop("quantization_config", None)
                 load_kwargs["device_map"] = "cpu"

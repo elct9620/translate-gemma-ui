@@ -227,6 +227,34 @@ class TestTranslateGemmaQuantization:
         assert retry_kwargs["device_map"] == "cpu"
         assert "quantization_config" not in retry_kwargs
 
+    @patch("transformers.AutoModelForImageTextToText")
+    @patch("transformers.AutoProcessor")
+    def test_falls_back_to_cpu_when_non_quantized_load_fails_with_oom(
+        self, mock_processor_cls, mock_model_cls, _mock_cached
+    ):
+        import torch
+
+        mock_processor_cls.from_pretrained.return_value = MagicMock()
+
+        # VRAM >= 8GB so no quantization is used, but GPU still OOMs
+        mock_model_cls.from_pretrained.side_effect = [
+            RuntimeError("CUDA out of memory. Tried to allocate 2.00 GiB"),
+            MagicMock(),
+        ]
+
+        from translate_gemma_ui.translator import TranslateGemmaTranslator
+
+        translator = TranslateGemmaTranslator(model_id="test-model", token="fake-token", vram_bytes=16 * 1024**3)
+
+        assert translator.is_quantized is False
+        assert translator.is_ready is True
+
+        # Verify the retry used CPU mode with float32
+        retry_kwargs = mock_model_cls.from_pretrained.call_args[1]
+        assert retry_kwargs["device_map"] == "cpu"
+        assert retry_kwargs["dtype"] == torch.float32
+        assert "quantization_config" not in retry_kwargs
+
     def test_fake_translator_is_not_quantized(self, _mock_cached):
         translator = FakeTranslator()
         assert translator.is_quantized is False
