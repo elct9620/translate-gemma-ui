@@ -49,9 +49,11 @@ def _build_device_display(device_info: DeviceInfo, *, forced_cpu: bool = False) 
     return "\n\n".join(parts)
 
 
-def _build_model_status(translator: Translator, error: str | None = None) -> str:
+def _build_model_status(translator: Translator, error: ModelLoadError | str | None = None) -> str:
+    if isinstance(error, ModelLoadError):
+        return _format_load_error(error)
     if error:
-        return f"⚠️ 模型載入失敗：{error}\n\n請輸入 HF Token 後點擊「載入模型」重試。"
+        return f"⚠️ 模型載入失敗：{error}\n\n請點擊「載入模型」重試。"
     if translator.model_name == "FakeTranslator":
         return "⚠️ 目前使用開發模式（FakeTranslator），翻譯結果僅為模擬。請載入模型以使用真正的翻譯功能。"
     if translator.is_quantized:
@@ -186,7 +188,9 @@ def _write_srt_temp(entries: list[SrtEntry], original_path: str) -> str:
     return str(output_path)
 
 
-def create_app(translator: Translator, device_info: DeviceInfo, *, model_error: str | None = None) -> gr.Blocks:
+def create_app(
+    translator: Translator, device_info: DeviceInfo, *, model_error: ModelLoadError | str | None = None
+) -> gr.Blocks:
     translator_ref: list[Translator] = [translator]
     lang_choices = [(name, code) for code, name in translator.languages.items()]
 

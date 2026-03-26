@@ -9,16 +9,20 @@ logger = logging.getLogger(__name__)
 
 def create_default_app() -> gr.Blocks:
     from translate_gemma_ui.device import get_device_info
-    from translate_gemma_ui.translator import FakeTranslator
+    from translate_gemma_ui.translator import FakeTranslator, ModelLoadError
     from translate_gemma_ui.ui import create_app
 
     device_info = get_device_info()
-    model_error: str | None = None
+    model_error: ModelLoadError | str | None = None
 
     try:
         from translate_gemma_ui.translator import TranslateGemmaTranslator
 
         translator = TranslateGemmaTranslator(vram_bytes=device_info.vram_bytes, force_cpu=device_info.is_cpu)
+    except ModelLoadError as e:
+        logger.exception("Failed to load model: %s (type=%s)", e, e.error_type)
+        model_error = e
+        translator = FakeTranslator()
     except OSError as e:
         if "getaddrinfo" in str(e).lower() or "name or service not known" in str(e).lower():
             logger.exception("Network error during model loading")

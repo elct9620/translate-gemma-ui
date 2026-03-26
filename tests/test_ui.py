@@ -69,6 +69,24 @@ class TestModelStatus:
         assert "載入失敗" in status
         assert "connection error" in status
 
+    def test_oom_error_shows_cpu_guidance_not_token(self):
+        error = ModelLoadError("CUDA out of memory", error_type="out_of_memory")
+        status = _build_model_status(FakeTranslator(), error=error)
+        assert "記憶體不足" in status
+        assert "CPU" in status
+        assert "HF Token" not in status
+
+    def test_auth_error_shows_token_guidance(self):
+        error = ModelLoadError("gated repo", error_type="auth")
+        status = _build_model_status(FakeTranslator(), error=error)
+        assert "認證失敗" in status
+        assert "HF Token" in status
+
+    def test_network_error_shows_connection_guidance(self):
+        error = ModelLoadError("connection refused", error_type="network")
+        status = _build_model_status(FakeTranslator(), error=error)
+        assert "網路連線" in status
+
     def test_shows_fake_translator_warning(self):
         status = _build_model_status(FakeTranslator())
         assert "開發模式" in status
