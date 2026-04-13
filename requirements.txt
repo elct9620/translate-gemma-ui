@@ -152,7 +152,7 @@ packaging==26.0
     #   transformers
 pandas==3.0.1
     # via gradio
-pillow==12.1.1
+pillow==12.2.0
     # via gradio
 psutil==7.2.2
     # via accelerate
